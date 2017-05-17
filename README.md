@@ -22,11 +22,11 @@ and you can use your local module by `import cobea` in any directory on your sys
 
 Usage of `cobea` essentially consists of three steps:
 
-* Create a valid `Response` object from your input data (see examples)
-* Send the object to the `cobea` function
+* Create a valid `Response` object from your input data,
+* Send the object to the `cobea` function,
 * Receive the `Result` object, plotting it using the function `plotting.plot_result` or similar.
 
-For details, please view the (incomplete) [documentation](doc/manual.pdf), which was largely generated from Python docstrings using [Sphinx](http://www.sphinx-doc.org).
+For details, please view the (incomplete) [manual](doc/manual.pdf), which was largely generated from Python docstrings using [Sphinx](http://www.sphinx-doc.org).
 
 ### Contact ###
 
@@ -36,4 +36,4 @@ If you have questions or need help for applying the code to your accelerator, fe
 
 [1] B. Riemann et al., ''COBEA - Optical Parameters From Response Matrices Without Knowledge of Magnet Strengths'', in Proc. [IPAC 17](http://www.ipac17.org), paper MOPIK066, 2017.
 
-[2] B. Riemann, ''[The Bilinear-Exponential Closed-Orbit Model and its Application to Storage Ring Beam Diagnostics](http://dx.doi.org/10.17877/DE290R-17221)'', Ph.D. Dissertation, TU Dortmund University, 2016. DOI [10.17877/DE290R-17221](http://dx.doi.org/10.17877/DE290R-17221). 
+[2] B. Riemann, ''[The Bilinear-Exponential Closed-Orbit Model and its Application to Storage Ring Beam Diagnostics](http://dx.doi.org/10.17877/DE290R-17221)'', Ph.D. Dissertation, TU Dortmund University, 2016. DOI [10.17877/DE290R-17221](http://dx.doi.org/10.17877/DE290R-17221).
