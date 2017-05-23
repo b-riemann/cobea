@@ -282,7 +282,12 @@ def delphi_jmw(rslt,ax,m,comparison_data={},yl=-1,direction='xy'):
 
     #legend(ncol=3, loc=4, bbox_to_anchor=(1, 0.93))
     ax.set_ylabel(r'$\Delta \phi_' + direction[m] + '$ / deg')
-    _ground_ylim(ax)
+    yl = ax.get_ylim()
+    if yl[1] > 180:
+        ax.set_ylim((0,180))
+    else:
+        ax.set_ylim((0,yl[1]))
+
 
 
 def d_jw(rslt,ax,w,comparison_data,direction='xy'):

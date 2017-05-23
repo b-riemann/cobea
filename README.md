@@ -2,7 +2,7 @@
 
 The _cobea_ module [1] is a Python implementation of **C**losed-**O**rbit **B**ilinear-**E**xponential **A**nalysis [2], an algorithm for studying closed-orbit response matrices of storage rings (particle accelerators).
 
-![COBEA Logo](doc/cobea-logo.svg) **Current Version: 0.11**
+![COBEA Logo](doc/cobea-logo.svg) **Current Version: 0.12**
 
 ### Usage ###
 
@@ -10,11 +10,11 @@ If you publish material using this software, please cite one or more of the refe
 
 #### Installation and Dependencies ####
 
-The _cobea_ module is implemented for Python 2.7 and using the [SciPy ecosystem](https://www.scipy.org). Future releases may also allow Python 3.x usage.
+The _cobea_ module is implemented both for Python 2.7 and 3.6, using the [SciPy ecosystem](https://www.scipy.org).
 
 The module is installed using _setuptools_. After cloning the repository to your system, just run
 
-    sudo python2 setup.py develop
+    sudo python setup.py develop
 
 and you can use your local module by `import cobea` in any directory on your system, changes being updated when you pull the repository.
 

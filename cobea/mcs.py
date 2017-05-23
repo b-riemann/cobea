@@ -9,7 +9,7 @@ from numpy import arange, angle, conj, copy, reshape, empty, dot, asarray, exp, 
 from numpy.linalg import pinv
 from scipy.linalg import lstsq, svd, eig
 
-from .model import BEModel
+from .model import Result
 
 
 ### Basic Index functions ###
@@ -54,7 +54,7 @@ def unbrace(complex_matrix):
 
 def brace(vector):
     shap = list(vector.shape)
-    shap[0] /= 2
+    shap[0] = int(shap[0] / 2)
     complex_vector = empty(shap, dtype=complex)
     complex_vector.real = vector[:shap[0]]
     complex_vector.imag = vector[shap[0]:]
@@ -92,8 +92,8 @@ def phasejump_coeffs(bpm_s, corr_s, mus):
 
 def corrector_matrix_k(R, cE):
     """output the complex corrector equation system matrix corrmat for a given corrector.
-    corrmat.shape = [fast_bpm*Directions+direction,mode]
-    R:  full fast monitor array from TBT data, R.shape = [fast_bpm,mode,direction]
+    corrmat.shape = [input_bpm*Directions+direction,mode]
+    R:  full input monitor array, R.shape = [input_bpm,mode,direction]
     cE: conj(E[:,k,:]) of Ejkm
     """
     D = R.shape[2]
@@ -115,12 +115,11 @@ def corrector_system_k(Dev_fd, R_fmd, cE_fm):
 def corrector_systems(Dev, monvec, bpm_s , corr_s, mus, printmsg=True, E=[]):
     """set up and solve the corrector equation systems.
     Dev[k,f,d]: Deviations at all correctors for fast BPMs.
-    monvec: all TBT monitor vectors.
+    monvec: all input monitor vectors.
     returns:
     D[k,m]: corrector parameters
     complexsolv parameters as arrays
     """
-    # computation:
     if len(E) == 0:
         cE = conj(phasejump_coeffs(bpm_s , corr_s, mus))
     else:
@@ -159,7 +158,6 @@ def monitor_systems(Dev, D, all_bpm_s, corr_s, mus, printmsg=True, E=[]):
     """set up and solve the monitor equation systems, return R[j,m,d], the full monitor vector set for all monitors.
     Dev[k,j,d]: Deviations at all correctors for all BPMs.
     D[k,m]: all corrector parameters."""
-    # computation:
     if len(E) == 0:
         E = phasejump_coeffs(all_bpm_s, corr_s, mus)  # E[j,k,m]
 
@@ -233,7 +231,7 @@ def composite_vectors(pcaDev):
     M = pcaDev.shape[2]
     compvecs = empty((2, 2 * M, pcaDev.shape[0]),
                      dtype=pcaDev.dtype)
-    for m in xrange(M):
+    for m in range(M):
         compvecs[0, m, :] = pcaDev[:, 0, m]
         compvecs[0, M + m, :] = pcaDev[:, 1, m]
         compvecs[1, m, :] = pcaDev[:, -2, m]
@@ -279,14 +277,9 @@ def shiftring_eigen(Tpart):
 
 def decomposite_eigenvec(Z):
     # monvecs_f = zeros((Z.shape[0]/2,2,2),dtype=Z.dtype)  #[f,m,d]
-    M = Z.shape[0] / 2
+    M = int( Z.shape[0] / 2 )
     monvecs_fmw = empty((2, M, M), dtype=Z.dtype)
-#    for m in xrange(M):
-#        for w in xrange(M):
-#            for dimon in range(Z.shape[0]/4):
-#                monvecs_f[0+2*dimon,m,d] = Z[d+4*dimon,m]
-#                monvecs_f[1+2*dimon,m,d] = Z[d+2+4*dimon,m]
-    for w in xrange(M):
+    for w in range(M):
         monvecs_fmw[0, :, w] = Z[w]
         monvecs_fmw[1, :, w] = Z[M + w]
     return monvecs_fmw
@@ -294,7 +287,7 @@ def decomposite_eigenvec(Z):
 
 def part_mons_corrs(monidx, corridx, splitidx, L):
     # partmons[half], partcorrs[half] for each half:
-    # L was len(elto['line']) before
+    # L: should be J+K, len(line)
     partmons = [[], []]
     partcorrs = [[], []]
 
@@ -329,9 +322,8 @@ def pca_tracking(Dev, partmons, partcorrs):
     pcaCoeffs = []
     Sg = []
     for part in range(2):
-        # Todo: check if partcorrs[part] is just 1...
         x = Dev[partcorrs[part]][:, partmons[part]]
-        s, pcad, pcac = pca_core(x)  # (Dev)
+        s, pcad, pcac = pca_core(x)
         pcaDevs.append(pcad)
         pcaCoeffs.append(pcac)
         Sg.append(s)
@@ -400,9 +392,9 @@ def dice_splitpoints(n, monidx, splitidx):
         m = n - shift * elmo
         shift += 1
         if m >= len(monidx) / 2 - shift:
-            m -= len(monidx) / 2 - shift
+            m -= int( len(monidx) / 2 ) - shift
             shift = -(shift - 1)
-    shift += len(monidx) / 2
+    shift += int( len(monidx) / 2 )
     splitidx[0, 0] = monidx[m]
     splitidx[0, 1] = monidx[m + 1]
     splitidx[1, 0] = monidx[m + shift - 1]
@@ -447,36 +439,43 @@ def dispersion_process(Dev, Dev_rc):
     b = u[:, 0] * s
     v = v[0, :] * s
     dsp = v.reshape(Dev.shape[1], -1)
-    for k in xrange(b.shape[0]):
+    for k in range(b.shape[0]):
         for w in range(Dev.shape[2]):
             Dev_res[k, :, w] -= b[k] * dsp[:, w]
 
     return Dev_res, dsp, b
 
 
-def layer(rslt, locruns = -1):
+def layer(response, locruns = -1):
     """
     implementation of the Monitor-Corrector Subspace algorithm
 
     Parameters
     ----------
-    rslt : object
-        A valid :py:class:`cobea.model.Result` object. The object is modified during processing.
+    response : object
+        A valid :py:class:`cobea.model.Response` object.
     locruns: int
         Number of different monitor subsets tried for MCS. If set to -1, value is set automatically.
     """
-    Dev_in = copy(rslt.matrix)
-    chainlen = len(rslt.topology.line)
-    monidx = topo_indices(rslt.topology.mon_names, rslt.topology.line)
-    corridx = topo_indices(rslt.topology.corr_names, rslt.topology.line)
-    splitidx, rmserr = local_optimization(Dev_in, monidx, corridx, chainlen, rslt.include_dispersion, locruns)
+
+    # 1) Run MCS through a number (locruns) of monitor subsets and pick the one with the smallest chi^2.
+    Dev_in = copy(response.matrix)
+    line_len = sum(response.topology.S_jk.shape) #result.J + result.K
+    monidx = topo_indices(response.topology.mon_names, response.topology.line)
+    corridx = topo_indices(response.topology.corr_names, response.topology.line)
+    splitidx, rmserr = local_optimization(Dev_in, monidx, corridx,
+                                          line_len, response.include_dispersion, locruns)
     print('MCS> monitor doublet search finished. Using')
     for split_line in splitidx:
-        #print([rslt.topology.line[x] for x in split_line])
-        print('       %s -- %s' % tuple([rslt.topology.line[x] for x in split_line]))
+        print('       %s -- %s' % tuple([response.topology.line[x] for x in split_line]))
 
-    ResM, Dev_rc, rslt.R_jmw[:], rslt.A_km[:], \
-        rslt.mu_m[:], rslt.d_jw[:], rslt.b_k[:], \
+    # 2) (re)Compute the result for the best (smallest chi^2) monitor subset.
+    result = Result(response) # preallocate result (initialized by 'empty')
+    ResM, Dev_rc, result.R_jmw[:], result.A_km[:], \
+        result.mu_m[:], result.d_jw[:], result.b_k[:], \
         pcaDevs, Sg = mcs_core(Dev_in, monidx, corridx, splitidx,
-                               chainlen, rslt.include_dispersion)
-    return monidx, corridx, splitidx, pcaDevs, Sg
+                               line_len, result.include_dispersion)
+    mcs_dict = {'monidx': monidx, 'corridx': corridx, 'splitidx': splitidx,
+                'pca_orbits': pcaDevs, 'pca_singvals': Sg}
+    result.additional['MCS'] = mcs_dict
+    return result

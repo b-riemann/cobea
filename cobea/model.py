@@ -14,7 +14,7 @@ class BasicModel():
 
     Parameters
     ----------
-    (K,J,M) : tuple
+    K,J,M : int
         dimensions of the model, with K being the number of correctors, J being the number of monitors, and M the number of modes respectively directions.
     init_fun : function
         a (possibly self-defined) initialization function like :py:func:`zeros` or :py:func:`empty` from numpy.
@@ -40,7 +40,7 @@ class BasicModel():
 
 
     A reduced model class without topology or gradient computation"""
-    def __init__(self, (K,J,M), init_fun=empty):
+    def __init__(self, K,J,M, init_fun=empty):
         self.R_jmw = init_fun((J, M, M), dtype=complex)
         self.A_km = init_fun((K, M), dtype=complex)
         self.d_jw = init_fun((J, M))
@@ -63,12 +63,12 @@ class BasicModel():
 
         # K=(len(x)-M)/(2*M)
         pos = arange(self.M, 2 * self.M)
-        for k in xrange(self.K):
+        for k in range(self.K):
             self.A_km[k].real = x[pos]
             self.A_km[k].imag = x[pos + self.A_km.size]
             pos += self.M
         pos += self.A_km.size
-        for j in xrange(self.J):
+        for j in range(self.J):
             for m in range(self.M):
                 self.R_jmw[j, m].real = x[pos]
                 self.R_jmw[j, m].imag = x[pos + self.R_jmw.size]
@@ -77,7 +77,7 @@ class BasicModel():
         if pos[0] != len(x):  # ..then there is dispersion info
             self.b_k = x[pos[0]:pos[0] + self.K]
             pos += self.K
-            for j in xrange(self.J):
+            for j in range(self.J):
                 self.d_jw[j] = x[pos]
                 pos += self.M
 
@@ -92,13 +92,13 @@ class BasicModel():
         """
         pos = self.M
         self._x[:pos] = self.mu_m
-        for k in xrange(self.K):
+        for k in range(self.K):
             for m in range(self.M):
                 self._x[pos] = self.A_km[k, m].real
                 self._x[pos + self.A_km.size] = self.A_km[k, m].imag
                 pos += 1
         pos += self.A_km.size
-        for j in xrange(self.J):
+        for j in range(self.J):
             for m in range(self.M):
                 for d in range(self.M):
                     self._x[pos] = self.R_jmw[j, m, d].real
@@ -109,15 +109,15 @@ class BasicModel():
             if self.b_k.ndim == 1:  # coupled dispersion
                 self._x[pos:pos + self.b_k.size] = self.b_k.flatten()
                 pos += self.b_k.size
-                for j in xrange(self.J):
+                for j in range(self.J):
                     self._x[pos:pos + self.M] = self.d_jw[j]
                     pos += self.M
         return self._x
 
 
 class ErrorModel(BasicModel):
-    def __init__(self, (K,J,M)):
-        BasicModel.__init__(self, (K, J, M))
+    def __init__(self, K,J,M):
+        BasicModel.__init__(self, K, J, M)
         # additional containers for Ripken-Mais errors. In BEModel, the Ripken-Mais
         # expectation values are generated from eigenorbits directly
         self.cbeta_jmw = empty(self.R_jmw.shape,dtype=float)
@@ -132,7 +132,7 @@ class BEModel(BasicModel):
 
     Parameters
     ----------
-    (K,J,M) : tuple
+    K,J,M : int
         dimensions of the model, with K being the number of correctors, J being the number of monitors, and M the number of modes respectively directions.
     init_fun : function
         a (possibly self-defined) initialization function like :py:func:`zeros` or :py:func:`empty` from numpy.
@@ -142,8 +142,8 @@ class BEModel(BasicModel):
     topology : object
         input topology, represented as :py:class:`Topology` object
     """
-    def __init__(self, (K, J, M), topology, include_dispersion, init_fun=empty):
-        BasicModel.__init__(self, (K, J, M), init_fun)
+    def __init__(self, K, J, M, topology, include_dispersion, init_fun=empty):
+        BasicModel.__init__(self, K, J, M, init_fun)
         self.topology = topology
 
         # number of search space dimensions:
@@ -207,14 +207,9 @@ class BEModel(BasicModel):
         xi = -Dev
         E_kjm = self.E_kjm()
 
-        # compute self._c[m,k,j,d], equivalent to:
-        # for m in xrange(self.M):
-        #    for k in xrange(self.K):
-        #        for j in xrange(self.J):
-        #            for d in xrange(self.M):
-        #                self._c[m,k,j,d] = R[j,m,d].conj() * E[k,j,m] * D[k,m]
-        for m in xrange(self.M):
-            for k in xrange(self.K):
+        # self._c[m,k,j,w] = R[j,m,w].conj() * E[k,j,m] * D[k,m]
+        for m in range(self.M):
+            for k in range(self.K):
                 self._c[m, k] = self.R_jmw[:, m].conj()
                 self._c[m, k] *= self.A_km[k, m]
         self._c *= rollaxis(E_kjm, 2)[:, :, :, None]
@@ -229,7 +224,7 @@ class BEModel(BasicModel):
 
         if opt > 0:
             # grad mu_m
-            for m in xrange(self.M):
+            for m in range(self.M):
                 # - sum_jk(sum_d( .. ))
                 self._x[m] = - sum(self.topology.S_jk.T * sum(xi * self._c[m].imag, axis=2))
                 # delmu[m] -= sum_jkd S[j,k] xi[k,j,d] self._c[m,k,j,d].imag
@@ -237,8 +232,8 @@ class BEModel(BasicModel):
             if opt > 1:
                 pos = self.M
                 # grad A_km
-                for k in xrange(self.K):
-                    for m in xrange(self.M):
+                for k in range(self.K):
+                    for m in range(self.M):
                         # cmplx = 2 sum_jw xi[k,j,w] * R[j,m,w] E[k,j,m].conj()
                         cmplx = 2 * sum(E_kjm[k, :, m].conj() *
                                         sum(xi[k] * self.R_jmw[:, m, :], axis=1))
@@ -247,9 +242,9 @@ class BEModel(BasicModel):
                         pos += 1
                 pos += self.A_km.size
                 # grad R_jmw
-                for j in xrange(self.J):
-                    for m in xrange(self.M):
-                        for w in xrange(self.M):
+                for j in range(self.J):
+                    for m in range(self.M):
+                        for w in range(self.M):
                             # cmplx = 2 sum_k xi[j,k,w] D[k,m] E[j,k,m]
                             cmplx = 2 * sum(xi[:, j, w] * self.A_km[:, m] * E_kjm[:, j, m])
                             self._x[pos] = cmplx.real
@@ -258,12 +253,12 @@ class BEModel(BasicModel):
                 if self.include_dispersion: #opt > 2:
                     pos += self.R_jmw.size
                     # grad b_k
-                    for k in xrange(self.K):
+                    for k in range(self.K):
                         self._x[pos] = 2 * sum(xi[k] * self.d_jw)
                         pos += 1
                     # grad d_jw
-                    for j in xrange(self.J):
-                        for w in xrange(self.M):
+                    for j in range(self.J):
+                        for w in range(self.M):
                             self._x[pos] = 2 * sum(xi[:, j, w] * self.b_k)
                             pos += 1
         xi *= xi
@@ -320,8 +315,8 @@ class BEModel(BasicModel):
 
         # mu_m
         for m in range(self.M):
-            for k in xrange(self.K):
-                for j in xrange(self.J):
+            for k in range(self.K):
+                for j in range(self.J):
                     for w in range(self.M):
                         cmplx = (self.R_jmw[j, m, w].conj() * E_kjm[k, j, m] * self.A_km[k, m]).imag
                         jacomat[m, kjw(k, j, w)] = -self.topology.S_jk[j, k] * cmplx / 2
@@ -330,9 +325,9 @@ class BEModel(BasicModel):
 
         pos = offs[0]
         # A_km
-        for k in xrange(self.K):
+        for k in range(self.K):
             for m in range(self.M):
-                for j in xrange(self.J):
+                for j in range(self.J):
                     for w in range(self.M):
                         cmplx = self.R_jmw[j, m, w] * E_kjm[k, j, m].conj()
                         idx = kjw(k, j, w)
@@ -343,10 +338,10 @@ class BEModel(BasicModel):
                 pos += 1
         # R_jmw
         pos = offs[1]  # start index for R_jmw elements
-        for j in xrange(self.J):
-            for m in xrange(self.M):
-                for w in xrange(self.M):
-                    for k in xrange(self.K):
+        for j in range(self.J):
+            for m in range(self.M):
+                for w in range(self.M):
+                    for k in range(self.K):
                         cmplx = self.A_km[k, m] * E_kjm[k, j, m]
                         idx = kjw(k, j, w)
                         jacomat[pos, idx] = cmplx.real
@@ -358,17 +353,17 @@ class BEModel(BasicModel):
         if self.include_dispersion:
             # b_k
             pos = offs[2]  # start index for b_k elements
-            for k in xrange(self.K):
-                for j in xrange(self.J):
-                    for w in xrange(self.M):
+            for k in range(self.K):
+                for j in range(self.J):
+                    for w in range(self.M):
                         idx = kjw(k, j, w)
                         jacomat[pos, idx] = self.d_jw[j, w]
                 # grad[pos] = 2*sum( xi[k] * self.d_jw )
                 pos += 1
             # self.d_jw
-            for j in xrange(self.J):
-                for w in xrange(self.M):
-                    for k in xrange(self.K):
+            for j in range(self.J):
+                for w in range(self.M):
+                    for k in range(self.K):
                         idx = kjw(k, j, w)
                         jacomat[pos, idx] = self.b_k[k]
                     # grad[pos] = 2*sum( xi[:,j,d] * self.b_k )
@@ -378,7 +373,7 @@ class BEModel(BasicModel):
     def response_matrix(self, dispersion=True):
         """
         generate a 'simulated' response matrix from the present model parameters
-        
+
         Returns
         -------
         Dev: array
@@ -387,8 +382,8 @@ class BEModel(BasicModel):
         # generated Dev[k,j,d] = "real( R  E* D* )  [ + dsp * b ]"
         Dev = empty((self.K, self.J, self.M))
         cE = self.E_jkm().conj()
-        for k in xrange(self.K):
-            for j in xrange(self.J):
+        for k in range(self.K):
+            for j in range(self.J):
                 for w in range(self.M):
                     Dev[k, j, w] = sum(
                         real(self.R_jmw[j, :, w] * cE[j, k] * self.A_km[k].conj()))
@@ -452,7 +447,7 @@ class BEModel(BasicModel):
 class Topology():
     """
     Representation of corrector/monitor labels and the order between them along the ring. During creation, all columns and rows of the input matrix, together with their labels in corr_names, mon_names, are re-ordered in ascending s-position according to the line list.
-    
+
     Parameters
     ----------
     corr_names : list
@@ -465,7 +460,7 @@ class Topology():
         holds all information for the monitor named 'BPM1' in the above example.
     line : list
         corrector and monitor labels in ascending s position, downstream of the storage ring.
-    
+
     """
     def __init__(self, corr_names, mon_names, line):
         # sort correctors in s-position order
@@ -498,7 +493,7 @@ class Topology():
 class Response():
     """
     Representation of COBEA input, used as such for the function :py:func:`cobea.cobea`
-    
+
     During creation of the this object, py:data:`matrix` rows and columns, as well as the corresponding
     py:data:`corr_names` and py:data:`mon_names`, are resorted to their respective order in py:data:`line`.
 
@@ -513,6 +508,8 @@ class Response():
         a list of monitor labels corresponding to each column of the matrix
     line : list
         a list of element names in ascending s order
+    include_dispersion : bool
+        whether to use a model with or without dispersion for fitting. default: True
     unit : str
         unit for the input values of the matrix (optional)
 
@@ -584,12 +581,13 @@ class Result(BEModel):
     """
     def __init__(self, response, additional={}, **kwargs):
         # this init function is only used inside the module and is thus not commented.
-        self.version = '0.11'
+        self.version = '0.12'
         self.matrix = response.matrix
         self.include_dispersion = response.include_dispersion
         self.unit = response.unit
-        BEModel.__init__(self, response.matrix.shape, response.topology, response.include_dispersion, **kwargs)
-        self.error = ErrorModel(response.matrix.shape)
+        K, J, M = response.matrix.shape
+        BEModel.__init__(self, K, J, M, response.topology, response.include_dispersion, **kwargs)
+        self.error = ErrorModel(K, J, M)
         self.additional = additional
 
     def update_errors(self):
@@ -604,7 +602,7 @@ class Result(BEModel):
         u, s, vh = svd(jacomat, full_matrices=False)
         #w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)
         del jacomat
-    
+
         # we cut off the smallest values according to the remaining number of scaling invariants.
         # 2 values are cut for each mode, and 1 for dispersion.
         cutoff = 2 * self.M + 1
@@ -620,7 +618,7 @@ class Result(BEModel):
 
         # we now have
         # sigma_rho^2 = A.T v v.T A = A.T u u.T A
-    
+
         # compute variance and related quantities
         Dev_res = self.matrix - self.response_matrix()
         Dev_subdispers = self.matrix - self.response_matrix(dispersion=False)
@@ -629,56 +627,51 @@ class Result(BEModel):
         dof = 2 * (self.A_km.size + self.R_jmw.size) + self.K + self.J * self.M - self.M - 1
         # variance formula (``Error computations and approximate Hessian'')
         vari = chisq * self.matrix.size / (self.matrix.size - dof)
-    
+
         rmsin = sum(self.matrix**2)
         print('     input response RMS: %.3e %s' % (sqrt(rmsin / self.matrix.size),self.unit))
         s2n = sqrt(rmsin / chisq)
         print('     Expl. funct. ratio (EVR): %.3f' % s2n)
-    
+
         xsigmas = empty(s.shape[0])
-    
+
         sqv = sqrt(vari)
         print('     input sigma: %.2e %s' % (sqv,self.unit))
-        for p in xrange(s.shape[0]):
+        for p in range(s.shape[0]):
             # rhoTv = u[p,:] #v[p,:]
             xsigmas[p] = sqrt(dot(u[p], u[p])) * sqv
-        
+
         self.error._opt_unwrap(xsigmas)
-    
-        self.additional['err'] = {
-            'chi_kjw': Dev_res,
-            'chi^2': chisq,
-            'variance': vari,
-            's2n': s2n,
-            'eigvals': s,
-            'cutoff': cutoff}
-    
+
+        self.additional['err'] = {'chi_kjw': Dev_res, 'chi^2': chisq,
+            'variance': vari, 's2n': s2n, 'eigvals': s, 'cutoff': cutoff}
+
         del xsigmas
-    
+
         Re_idx = offs[1]  # index of Re(R_jmw)
         Im_idx = Re_idx + self.R_jmw.size
-        for j in xrange(self.J):
-            for m in xrange(self.M):
-                for w in xrange(self.M):
+        for j in range(self.J):
+            for m in range(self.M):
+                for w in range(self.M):
                     # compute beta error
                     A_Re = 2 * self.R_jmw[j,m,w].real
                     A_im = 2 * self.R_jmw[j,m,w].imag
                     Atu = A_Re * u[Re_idx, :] + A_im * u[Im_idx, :]  # compute A.T u
                     self.error.cbeta_jmw[j, m, w] = sqrt(dot(Atu, Atu)) * sqv
-    
+
                     # compute phi error in DEGREES
                     beta = self.cbeta_jmw
                     A_Re = -self.R_jmw[j,m,w].imag / beta[j, m, w]
                     A_im = self.R_jmw[j,m,w].real / beta[j, m, w]
                     Atu = A_Re * u[Re_idx,:] + A_im * u[Im_idx, :]  # compute A.T u
                     self.error.phi_jmw[j, m, w] = 180 * sqrt(dot(Atu, Atu)) * sqv / pi
-    
+
                     Re_idx += 1
                     Im_idx += 1
-    
+
         for j in range(1, self.J):
             self.error.delphi_jmw[j-1] = sqrt(self.error.phi_jmw[j]**2 + self.error.phi_jmw[j - 1]**2)
-    
+
         #print("error check 3: %e" % sum(self.additional['err']['chi^2']))
 
     def save(self,filename):
@@ -687,6 +680,6 @@ class Result(BEModel):
         The object can be reloaded using :py:func:`cobea.load_result`
         (which simply uses pickle)
         """
-        with open(filename,'w') as f:
+        with open(filename,'wb') as f:
             dump(self, f, protocol=2)
         print('Result saved in '+filename)

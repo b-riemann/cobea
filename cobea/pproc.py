@@ -7,7 +7,7 @@ from numpy import conj, empty, zeros, eye, dot
 def symplectic_form(D=2):
     """
     Compute the symplectic form.
-    
+
     Parameters
     ----------
     D : int
@@ -62,10 +62,10 @@ def invariants_from_eigenvectors(Q):
     invariant : float
         invariants of motion
     """
-    Om = symplectic_form(Q.shape[1] / 2)  # (R_drift.shape[0])
+    Om = symplectic_form(int(Q.shape[1] / 2))  # symplectic_form(M)
     M = Q.shape[0]  # R_drift.shape[1]
     invariant = empty(M, dtype=complex)
-    for m in xrange(M):
+    for m in range(M):
         invariant[m] = -1.j * dot(conj(Q[m].T), dot(Om, Q[m])) / 2
     print('     invariants: ' + str(invariant))
     return invariant.real
