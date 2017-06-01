@@ -110,6 +110,5 @@ def invariant_tunes(rslt, di, driftlen=0):
         rslt.normalize(Im)
         rslt.additional['invariants'] = Im
     else:
-        print('guessing quadrant')
         inprod = invariants_of_motion(rslt.R_jmw[di], 1)
         rslt.normalize(inprod)

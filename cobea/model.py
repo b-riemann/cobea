@@ -2,12 +2,12 @@
 This submodule defines all classes used by :py:class:`cobea`. Besides input (:py:class:`Response`) and output (:py:class:`Result`) containers, this also includes gradient-based optimization procedures in :py:class:`BE_Model`
 """
 from numpy import abs, angle, arange, argsort, asarray, cumsum, diag, \
-    dot, empty, exp, NaN, real, rollaxis, outer, pi, \
-    ravel_multi_index, sqrt, sum, zeros
+    dot, einsum, empty, exp, NaN, real, rollaxis, outer, pi, \
+    ravel_multi_index, sqrt, sum, zeros, min, max
 from scipy.linalg import svd # eigh
 from warnings import warn
 from pickle import dump
-
+from time import time
 
 class BasicModel():
     """simple representation of the Bilinear-Exponential model (without topology or optimization attributes).
@@ -182,7 +182,7 @@ class BEModel(BasicModel):
             E[:, :, m] = exp(1.j * self.topology.S_jk.T * self.mu_m[m] / 2)
         return E
 
-    def _gradient_unwrapped(self, Dev, opt=1):
+    def _gradient_unwrapped(self, Dev, opt):
         """
         objective function value and gradient for all variables of the response problem.
 
@@ -196,7 +196,7 @@ class BEModel(BasicModel):
                 =1: function value, mu gradient
                 =2: f.val., gradient without dispersion (no b_k and d_jw components)
                 (=3: f.val, full gradient with dispersion.)
-        
+
         Returns
         -------
         chi^2: float
@@ -205,62 +205,50 @@ class BEModel(BasicModel):
             a real-valued vector that contains dependent parameters and can be reshaped by :py:func:`Bare_Model.opt_unwrap`
         """
         xi = -Dev
-        E_kjm = self.E_kjm()
+        E = self.E_jkm()
 
-        # self._c[m,k,j,w] = R[j,m,w].conj() * E[k,j,m] * D[k,m]
-        for m in range(self.M):
-            for k in range(self.K):
-                self._c[m, k] = self.R_jmw[:, m].conj()
-                self._c[m, k] *= self.A_km[k, m]
-        self._c *= rollaxis(E_kjm, 2)[:, :, :, None]
+        # self._c[m,k,j,w] = R[j,m,w].conj() * E[j,k,m] * D[k,m]
+        einsum('jmw,jkm,km->mkjw',self.R_jmw.conj(),E,self.A_km,out=self._c)
 
-        xi += sum(self._c.real, axis=0)  # xi[k,j,d] += self._c[m,k,j,d].real #sum_m
+        # xi[k,j,d] += sum_m self._c[m,k,j,d].real
+        xi += sum(self._c.real, axis=0)
+
         if self.include_dispersion:
-            for w in range(self.M):
-                # xi[k,j,w] += self.b_k[k] * self.d_jw[j,w]
-                xi[:, :, w] += outer(self.b_k, self.d_jw[:, w])
+            # xi[k,j,w] += self.b_k[k] * self.d_jw[j,w]
+            xi += einsum('k,jw->kjw',self.b_k, self.d_jw)
 
         # self._x acts as a gradient vector in the following
 
         if opt > 0:
-            # grad mu_m
-            for m in range(self.M):
-                # - sum_jk(sum_d( .. ))
-                self._x[m] = - sum(self.topology.S_jk.T * sum(xi * self._c[m].imag, axis=2))
-                # delmu[m] -= sum_jkd S[j,k] xi[k,j,d] self._c[m,k,j,d].imag
+            # grad mu[m] -= sum_jkw S[j,k] xi[k,j,w] self._c[m,k,j,w].imag
+            self._x[:self.M] = -einsum('jk,kjw,mkjw->m',self.topology.S_jk,xi,self._c.imag)
 
             if opt > 1:
                 pos = self.M
-                # grad A_km
-                for k in range(self.K):
-                    for m in range(self.M):
-                        # cmplx = 2 sum_jw xi[k,j,w] * R[j,m,w] E[k,j,m].conj()
-                        cmplx = 2 * sum(E_kjm[k, :, m].conj() *
-                                        sum(xi[k] * self.R_jmw[:, m, :], axis=1))
-                        self._x[pos] = cmplx.real
-                        self._x[pos + self.A_km.size] = cmplx.imag
-                        pos += 1
-                pos += self.A_km.size
-                # grad R_jmw
-                for j in range(self.J):
-                    for m in range(self.M):
-                        for w in range(self.M):
-                            # cmplx = 2 sum_k xi[j,k,w] D[k,m] E[j,k,m]
-                            cmplx = 2 * sum(xi[:, j, w] * self.A_km[:, m] * E_kjm[:, j, m])
-                            self._x[pos] = cmplx.real
-                            self._x[pos + self.R_jmw.size] = cmplx.imag
-                            pos += 1
+                pos2 = pos + self.A_km.size
+
+                # grad A[k,m] = 2 sum_jw xi[k,j,w] R[j,m,w] E[j,k,m].conj()
+                cmplx = 2*einsum('kjw,jmw,jkm->km',xi,self.R_jmw,E.conj()).flatten()
+                self._x[pos:pos2] = cmplx.real
+                pos = pos2 + self.A_km.size
+                self._x[pos2:pos] = cmplx.imag
+
+                pos2 = pos + self.R_jmw.size
+
+                # grad R[j,m,w] = 2 sum_k xi[k,j,w] A[k,m] E[j,k,m]
+                cmplx = 2*einsum('kjw,km,jkm->jmw',xi,self.A_km,E).flatten()
+                self._x[pos:pos2] = cmplx.real
+                pos = pos2 + self.R_jmw.size
+                self._x[pos2:pos] = cmplx.imag
+
                 if self.include_dispersion: #opt > 2:
-                    pos += self.R_jmw.size
-                    # grad b_k
-                    for k in range(self.K):
-                        self._x[pos] = 2 * sum(xi[k] * self.d_jw)
-                        pos += 1
-                    # grad d_jw
-                    for j in range(self.J):
-                        for w in range(self.M):
-                            self._x[pos] = 2 * sum(xi[:, j, w] * self.b_k)
-                            pos += 1
+                    pos2 = pos + self.K
+
+                    # grad b[k] = 2 sum_jw xi[k,j,w] d[j,w]
+                    self._x[pos:pos2] = 2*einsum('kjw,jw->k',xi,self.d_jw)
+
+                    # grad d[j,w] = 2 sum_k xi[k,j,w] b[k]
+                    self._x[pos2:] = 2*einsum('kjw,k->jw',xi,self.b_k).flatten()
         xi *= xi
         return sum(xi), self._x
 
@@ -580,8 +568,7 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        # this init function is only used inside the module and is thus not commented.
-        self.version = '0.12'
+        self.version = '0.13'
         self.matrix = response.matrix
         self.include_dispersion = response.include_dispersion
         self.unit = response.unit

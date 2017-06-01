@@ -184,8 +184,10 @@ def cobea(response, drift_space=NaN, convergence_info=False):
     except TypeError:
         # no drift_space info, get the optimum splitidx value
         # from MCS startvalue_layer and check invariant sign with it
-        si = find_indices(splitidx[0], monidx)
-        invariant_tunes(result, si)
+        inv_monitors = result.topology.mon_names[result.additional['MCS']['splitidx'][0]]
+        print('PPr> no drift space given,\n     using %s -- %s to check tune quadrant' % tuple(inv_monitors))
+        invariant_tunes(result,
+            find_indices(inv_monitors, result.topology.mon_names))
 
     print('PPr> computing fit errors')
     result.update_errors()
