@@ -399,8 +399,6 @@ def dice_splitpoints(n, monidx, splitidx):
     splitidx[0, 1] = monidx[m + 1]
     splitidx[1, 0] = monidx[m + shift - 1]
     splitidx[1, 1] = monidx[m + shift]
-    print('MCS> mon %s, shift %s, last: %s' %
-          (m, shift, m + shift - len(monidx)))
 
 
 def dice_size(Lmonidx, maxstrain):
@@ -408,14 +406,13 @@ def dice_size(Lmonidx, maxstrain):
     return maxstrain * (Lmonidx - 1)
 
 
-def local_optimization(Dev, monidx, corridx, Nelems, include_dispersion, runs=-1):
+def local_optimization(Dev, monidx, corridx, Nelems, include_dispersion, runs):
     """solve CES and MES systems
     compute residual Res error
     and find optimal splitidx"""
     splitidx = empty([2, 2], dtype='int')
 
-    if runs == -1:
-        runs = dice_size(len(monidx), 2)
+
     rms = empty(runs)
     for n in range(runs):  # range(len(monidx)-spl-1):
         dice_splitpoints(n, monidx, splitidx)
@@ -446,7 +443,7 @@ def dispersion_process(Dev, Dev_rc):
     return Dev_res, dsp, b
 
 
-def layer(response, locruns = -1):
+def layer(response, trials = -1):
     """
     implementation of the Monitor-Corrector Subspace algorithm
 
@@ -454,7 +451,7 @@ def layer(response, locruns = -1):
     ----------
     response : object
         A valid :py:class:`cobea.model.Response` object.
-    locruns: int
+    trials: int
         Number of different monitor subsets tried for MCS. If set to -1, value is set automatically.
     """
 
@@ -463,8 +460,12 @@ def layer(response, locruns = -1):
     line_len = sum(response.topology.S_jk.shape) #result.J + result.K
     monidx = topo_indices(response.topology.mon_names, response.topology.line)
     corridx = topo_indices(response.topology.corr_names, response.topology.line)
+
+    if trials == -1:
+        trials = dice_size(len(monidx), 2)
+    print('MCS> running monitor doublet search (%i trials)' % trials)
     splitidx, rmserr = local_optimization(Dev_in, monidx, corridx,
-                                          line_len, response.include_dispersion, locruns)
+                                          line_len, response.include_dispersion, trials)
     print('MCS> monitor doublet search finished. Using')
     for split_line in splitidx:
         print('       %s -- %s' % tuple([response.topology.line[x] for x in split_line]))

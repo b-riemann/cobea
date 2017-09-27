@@ -1,8 +1,12 @@
 """
-This submodule defines all classes used by :py:class:`cobea`. Besides input (:py:class:`Response`) and output (:py:class:`Result`) containers, this also includes gradient-based optimization procedures in :py:class:`BE_Model`
+This COBEA submodule defines all classes used by :py:class:`cobea`.
+Besides input (:py:class:`Response`) and output (:py:class:`Result`) containers, this also includes gradient-based
+optimization procedures in :py:class:`BE_Model`.
+
+Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from numpy import abs, angle, arange, argsort, asarray, cumsum, diag, \
-    dot, einsum, empty, exp, NaN, real, rollaxis, outer, pi, \
+    dot, einsum, empty, exp, NaN, real, pi, \
     ravel_multi_index, sqrt, sum, zeros, min, max
 from scipy.linalg import svd # eigh
 from warnings import warn
@@ -207,7 +211,7 @@ class BEModel(BasicModel):
         xi = -Dev
         E = self.E_jkm()
 
-        # self._c[m,k,j,w] = R[j,m,w].conj() * E[j,k,m] * D[k,m]
+        # self._c[m,k,j,w] = R*[j,m,w] E[j,k,m] D[k,m]
         einsum('jmw,jkm,km->mkjw',self.R_jmw.conj(),E,self.A_km,out=self._c)
 
         # xi[k,j,d] += sum_m self._c[m,k,j,d].real
@@ -227,7 +231,7 @@ class BEModel(BasicModel):
                 pos = self.M
                 pos2 = pos + self.A_km.size
 
-                # grad A[k,m] = 2 sum_jw xi[k,j,w] R[j,m,w] E[j,k,m].conj()
+                # grad A[k,m] = 2 sum_jw xi[k,j,w] R[j,m,w] E*[j,k,m]
                 cmplx = 2*einsum('kjw,jmw,jkm->km',xi,self.R_jmw,E.conj()).flatten()
                 self._x[pos:pos2] = cmplx.real
                 pos = pos2 + self.A_km.size
@@ -358,43 +362,53 @@ class BEModel(BasicModel):
                     pos += 1
         return jacomat, offs
 
-    def response_matrix(self, dispersion=True):
+    def response_matrix(self):
         """
         generate a 'simulated' response matrix from the present model parameters
 
         Returns
         -------
-        Dev: array
+        rsim_kjw: array
             response array of shape (:py:data:`K`, :py:data:`J`, :py:data:`M`)
         """
-        # generated Dev[k,j,d] = "real( R  E* D* )  [ + dsp * b ]"
-        Dev = empty((self.K, self.J, self.M))
-        cE = self.E_jkm().conj()
-        for k in range(self.K):
-            for j in range(self.J):
-                for w in range(self.M):
-                    Dev[k, j, w] = sum(
-                        real(self.R_jmw[j, :, w] * cE[j, k] * self.A_km[k].conj()))
-        if dispersion:
-            for w in range(self.M):
-                Dev[:, :, w] += outer(self.b_k, self.d_jw[:, w])
-        return Dev
+        rsim_kjw = real(einsum('jmw,jkm,km->kjw', self.R_jmw,
+                          self.E_jkm().conj(),self.A_km.conj()))
+
+        if self.include_dispersion:
+            rsim_kjw += einsum('k,jw->kjw',self.b_k,self.d_jw)
+        return rsim_kjw
 
     @property
     def phi_jmw(self):
-        """Compute Ripken-Mais betatron phases"""
-        return angle(self.R_jmw*self.R_jmw[0].conj(),deg=True)
+        """Compute Ripken-Mais betatron phases in units of degrees"""
+        return angle(self.R_jmw*self.R_jmw[0].conj(), deg=True)
 
     @property
     def delphi_jmw(self):
         """Ripken-Mais phase advances per element"""
-        return angle(self.R_jmw[1:]*self.R_jmw[:-1].conj(),deg=True)
+        return angle(self.R_jmw[1:]*self.R_jmw[:-1].conj(), deg=True)
 
     @property
     def cbeta_jmw(self):
         """Ripken-Mais beta parameters * constant.
         If self.R_jmw is normalized, constant = 1."""
         return self.R_jmw.real**2 + self.R_jmw.imag**2
+
+    @property
+    def delphi_km(self):
+        """
+        Betatron phase advances per corrector assuming
+        decoupled optics and thin correctors
+        """
+        return angle(self.A_km[1:]*self.A_km[:-1].conj(), deg=True)
+
+    @property
+    def cbeta_km(self):
+        """
+        const*beta at correctors assuming
+        decoupled optics and thin correctors
+        """
+        return self.A_km.real**2 + self.A_km.imag**2
 
     def flip_mu(self,m):
         """switch the sign of mu_m for given m, simultaneously changing the
@@ -568,7 +582,7 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.13'
+        self.version = '0.14'
         self.matrix = response.matrix
         self.include_dispersion = response.include_dispersion
         self.unit = response.unit
@@ -608,7 +622,6 @@ class Result(BEModel):
 
         # compute variance and related quantities
         Dev_res = self.matrix - self.response_matrix()
-        Dev_subdispers = self.matrix - self.response_matrix(dispersion=False)
         chisq = sum(Dev_res**2)
         # effective degrees of freedom D-D_inv, BE+d model
         dof = 2 * (self.A_km.size + self.R_jmw.size) + self.K + self.J * self.M - self.M - 1
@@ -670,3 +683,11 @@ class Result(BEModel):
         with open(filename,'wb') as f:
             dump(self, f, protocol=2)
         print('Result saved in '+filename)
+
+    def __str__(self):
+        s = '--global summary--\n'
+        s += '  %i monitors * %i correctors * %i directions\n  = %i response elements\n' % (self.J, self.K, self.M, self.matrix.size)
+        for m in range(self.M):
+            s += "  Q_{mode} = {tune:.4f} +- {error:.4f}\n".format(mode=m,tune=self.tune(m),error=self.error.mu_m[m]/(2*pi))
+        s += '  chi^2 = %.3e' % self.additional['err']['chi^2']
+        return s

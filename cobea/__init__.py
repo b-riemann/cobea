@@ -8,8 +8,7 @@ accelerators by closed-orbit information.
     PhD Dissertation (TU Dortmund University, 2016),
     DOI Link: (https://dx.doi.org/10.17877/DE290R-17221)
 
-Bernard Riemann, TU Dortmund University,
-bernard.riemann@tu-dortmund.de
+Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from numpy import asarray, sum, empty, sign, sqrt, NaN
 
@@ -159,7 +158,7 @@ def cobea(response, drift_space=NaN, convergence_info=False):
     coretime = -time() # start measuring ('tic')
 
     # run the start value layer, return result object:
-    result = startvalue_layer(response, locruns=-1)
+    result = startvalue_layer(response)
 
     # run the optimization layer, result is modified:
     optimization_layer(result, -1 + 2 * convergence_info)
@@ -191,6 +190,7 @@ def cobea(response, drift_space=NaN, convergence_info=False):
 
     print('PPr> computing fit errors')
     result.update_errors()
+    print(result)
     return result
 
 
@@ -198,6 +198,6 @@ def load_result(savefile):
     """
     Load (un-pickle) a Result object (or any other object)
     """
-    with open(savefile) as f:
+    with open(savefile,'rb') as f:
         result = load(f)
     return result

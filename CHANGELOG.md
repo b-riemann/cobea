@@ -1,3 +1,9 @@
+## Version 0.14 ##
+
+* A simple bug in load_result (binary mode) has been removed.
+* Plotting of corrector quantities is now possible in principle (error margins not yet included for their cbeta and delphi values)
+* Plot output is now easier to customize (see plot_flags in plotting.plot_result)
+
 ## Version 0.13 ##
 
 * Gradient computation now largely done using numpy.einsum, thanks to B. Isbarn for the suggestion. Gradient evaluation time has been observed to decrease by a factor 1.5 - 2. 
