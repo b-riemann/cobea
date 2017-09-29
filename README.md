@@ -2,7 +2,7 @@
 
 The _cobea_ module [1] is a Python implementation of **C**losed-**O**rbit **B**ilinear-**E**xponential **A**nalysis [2], an algorithm for studying closed-orbit response matrices of storage rings (particle accelerators).
 
-![COBEA Logo](doc/cobea-logo.svg) **Current Version: 0.14** (see [CHANGELOG.md](CHANGELOG.md) for details)
+![COBEA Logo](doc/cobea-logo.svg) **Current Version: 0.14a** (see [CHANGELOG.md](CHANGELOG.md) for details)
 
 ### Usage ###
 
@@ -34,6 +34,6 @@ If you have questions or need help for applying the code to your accelerator, fe
 
 #### References ####
 
-[1] B. Riemann _et al._, ''COBEA - Optical Parameters From Response Matrices Without Knowledge of Magnet Strengths'', in [Proc. IPAC 17, paper MOPIK066](http://vrws.de/ipac2017/papers/mopik066.pdf), 2017.
+[1] B. Riemann _et al._, ''COBEA - Optical Parameters From Response Matrices Without Knowledge of Magnet Strengths'', in [Proc. IPAC 17, paper MOPIK066](http://accelconf.web.cern.ch/AccelConf/ipac2017/papers/mopik066.pdf), 2017.
 
 [2] B. Riemann, ''The Bilinear-Exponential Closed-Orbit Model and its Application to Storage Ring Beam Diagnostics'', Ph.D. Dissertation, TU Dortmund University, 2016. [DOI 10.17877/DE290R-17221](http://dx.doi.org/10.17877/DE290R-17221).

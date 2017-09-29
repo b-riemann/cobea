@@ -1,3 +1,7 @@
+### Version 0.14a ###
+
+* typo in plotting.cbeta_km removed.
+
 ## Version 0.14 ##
 
 * A simple bug in load_result (binary mode) has been removed.

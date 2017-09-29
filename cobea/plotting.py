@@ -381,7 +381,7 @@ def cbeta_km(rslt, m, ax=gca()):
     ToDo: errors for this quantity
     """
     _plot_Re(ax, rslt.cbeta_km[:, m], 0)
-    ax.set_ylabel('$|A_{km}| \approx $ const $\beta_km$ / a.u.')
+    ax.set_ylabel(r'$|A_{km}| \approx $ const $\beta_km$ / a.u.')
 
 
 def delphi_km(rslt, m, ax=gca()):
