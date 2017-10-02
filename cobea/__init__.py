@@ -20,7 +20,7 @@ from .mcs import layer as startvalue_layer
 
 from scipy.optimize.lbfgsb import fmin_l_bfgs_b  # minimize
 
-from .pproc import invariant_tunes
+from .pproc import normalize_using_drift, guess_mu_sign, l_bfgs_iterate
 from .model import Response, Result
 
 
@@ -65,77 +65,10 @@ def optimization_layer(result, iprint=-1):
     return result
 
 
-def l_bfgs_iterate(alloc_items=10000):
-    """
-    convert the iterate.dat file produced by L-BFGS-B
-
-    Parameters
-    ----------
-    alloc_items : int
-        the number of maximum iterations for which memory is allocated.
-
-    Returns
-    -------
-    iter : dict
-        a dictionary with the following fields. The field names and descriptions have been copied from a demo output.
-          'it' : array
-              iteration number
-          'nf' : array
-              number of function evaluations
-          'nseg' : array
-              number of segments explored during the Cauchy search
-          'nact' : array
-              number of active bounds at the generalized Cauchy point
-          'sub'  : str
-              manner in which the subspace minimization terminated
-                  con = converged,
-                  bnd = a bound was reached
-          'itls' : int
-              number of iterations performed in the line search
-          'stepl' : float
-              step length used
-          'tstep' : float
-              norm of the displacement (total step)
-          'projg' : float
-              norm of the projected gradient
-          'f'    : float
-              function value
-    """
-    narr = empty((5, alloc_items), dtype=int)
-    farr = empty((5, alloc_items))
-    with open('iterate.dat') as f:
-        num = -1
-        for line in f:
-            if line[:5] == '   it':
-                num = 0
-            else:
-                if num > -1:
-                    lisp = line.split()
-                    if len(lisp) != 10:
-                        break
-                    for c in range(4):
-                        if lisp[c][0] != '-':
-                            narr[c, num] = int(lisp[c])
-                    if lisp[c][0] != '-':
-                        narr[4, num] = int(lisp[5])
-                    for c in range(4):
-                        if lisp[c + 6][0] != '-':
-                            farr[c, num] = float(lisp[c + 6].replace('D', 'E'))
-                    num += 1
-
-    return {
-        'it': narr[0, :num],
-        'nf': narr[1, :num],
-        'nseg': narr[2, :num],
-        'nact': narr[3, :num],
-        'itls': narr[4, :num],
-        'stepl': farr[0, :num],
-        'tstep': farr[1, :num],
-        'projg': farr[2, :num],
-        'f': farr[3, :num]}
 
 
-def cobea(response, drift_space=NaN, convergence_info=False):
+
+def cobea(response, drift_space=None, convergence_info=False):
     """
     Main COBEA function with pre- and postprocessing.
 
@@ -143,8 +76,8 @@ def cobea(response, drift_space=NaN, convergence_info=False):
     ----------
     response :  object
         A valid :py:class:`cobea.model.Response` object representing the input.
-    drift_space : tuple
-        if not-NaN, a tuple with 3 elements (monitor name 1, monitor name 2, drift space length / m)
+    drift_space : iterable
+        if not None, a tuple or list with 3 elements (monitor name 1, monitor name 2, drift space length / m)
     convergence_info : bool
         if True, convergence information from L-BFGS is added to the result dictionary (before saving).
 
@@ -167,26 +100,18 @@ def cobea(response, drift_space=NaN, convergence_info=False):
     print('elapsed time (MCS+Opt): %.2f s' % coretime)
     result.additional['coretime'] = coretime
 
-    # read in convergence information if it exists
     if convergence_info:
+        # read in convergence information
         result.additional['conv'] = l_bfgs_iterate()
 
-    #chisq, grad = result._gradient_unwrapped(response.matrix, 0)
-    #print("error check 1: %e" % chisq)
-
     try:  # assume that drift_space information was given
-        print('PPr> normalizing using drift ')
-        print('       %s -- %s' % drift_space[:2])
-        print('       with length %s m.' % drift_space[2])
         di = find_indices(drift_space[:2],result.topology.mon_names)
-        invariant_tunes(result, di, drift_space[2])
-    except TypeError:
-        # no drift_space info, get the optimum splitidx value
-        # from MCS startvalue_layer and check invariant sign with it
-        inv_monitors = result.topology.mon_names[result.additional['MCS']['splitidx'][0]]
-        print('PPr> no drift space given,\n     using %s -- %s to check tune quadrant' % tuple(inv_monitors))
-        invariant_tunes(result,
-            find_indices(inv_monitors, result.topology.mon_names))
+        print(("PPr> normalizing using drift\n"
+               "       %s -- %s with length ~ %.4f m.") % tuple(drift_space))
+        normalize_using_drift(result, di, drift_space[2])
+    except TypeError: # drift_space is None
+        print('PPr> no drift space given, guessing tune quadrant by phase advance sign')
+        guess_mu_sign(result)
 
     print('PPr> computing fit errors')
     result.update_errors()

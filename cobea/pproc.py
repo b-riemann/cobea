@@ -1,8 +1,11 @@
 """
-Small postprocessing functions for COBEA results.
+Small postprocessing and helper functions for COBEA results.
+
+Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 
-from numpy import conj, empty, zeros, eye, dot
+from numpy import conj, empty, zeros, eye, dot, sign, asarray
+
 
 def symplectic_form(D=2):
     """
@@ -67,7 +70,7 @@ def invariants_from_eigenvectors(Q):
     invariant = empty(M, dtype=complex)
     for m in range(M):
         invariant[m] = -1.j * dot(conj(Q[m].T), dot(Om, Q[m])) / 2
-    print('     invariants: ' + str(invariant))
+    print('     invariants: ' + str(invariant.real))
     return invariant.real
 
 
@@ -91,24 +94,104 @@ def invariants_of_motion(R_drift, length):
     return invariants_from_eigenvectors(Q)
 
 
-def invariant_tunes(rslt, di, driftlen=0):
+def normalize_using_drift(model, di, drift_length):
     """
     Invariant postprocessing algorithm.
     The Result object is modified by information from a drift space. monitor vectors, corrector parameters and the sign of mu_m is changed accordingly.
     
     Parameters
     ----------
-    rslt : object
-        A valid :py:class:`cobea.model.Result` object. The object is modified.
+    model : object
+        A valid :py:class:`cobea.model.BEModel` object or descendant. The object is modified.
     di : list
         j indices of the used drift space
-    driftlen : float
-        length of the use drift space (usually in m)
+    drift_length : float
+        length of the use drift space
     """
-    if driftlen != 0:
-        Im = invariants_of_motion(rslt.R_jmw[di], driftlen)
-        rslt.normalize(Im)
-        rslt.additional['invariants'] = Im
-    else:
-        inprod = invariants_of_motion(rslt.R_jmw[di], 1)
-        rslt.normalize(inprod)
+    invariants = invariants_of_motion(model.R_jmw[asarray(di)], drift_length)
+    model.normalize(invariants)
+
+    try: # if the object is a Result object (subclassing BEModel), this works
+        model.additional['invariants'] = invariants
+    except AttributeError:
+        pass
+
+
+def guess_mu_sign(rslt):
+    """for weakly coupled setups,
+    guess the sign of mu (quadrant)
+    based on monitor phase advance"""
+    x = sign(rslt.delphi_jmw)
+    for m in range(rslt.M):
+        if sum(x[:,m,m]) < 0:
+            rslt.flip_mu(m)
+
+
+def l_bfgs_iterate(alloc_items=10000):
+    """
+    convert the iterate.dat file produced by L-BFGS-B
+
+    Parameters
+    ----------
+    alloc_items : int
+        the number of maximum iterations for which memory is allocated.
+
+    Returns
+    -------
+    iter : dict
+        a dictionary with the following fields. The field names and descriptions have been copied from a demo output.
+          'it' : array
+              iteration number
+          'nf' : array
+              number of function evaluations
+          'nseg' : array
+              number of segments explored during the Cauchy search
+          'nact' : array
+              number of active bounds at the generalized Cauchy point
+          'sub'  : str
+              manner in which the subspace minimization terminated
+                  con = converged,
+                  bnd = a bound was reached
+          'itls' : int
+              number of iterations performed in the line search
+          'stepl' : float
+              step length used
+          'tstep' : float
+              norm of the displacement (total step)
+          'projg' : float
+              norm of the projected gradient
+          'f'    : float
+              function value
+    """
+    narr = empty((5, alloc_items), dtype=int)
+    farr = empty((5, alloc_items))
+    with open('iterate.dat') as f:
+        num = -1
+        for line in f:
+            if line[:5] == '   it':
+                num = 0
+            else:
+                if num > -1:
+                    lisp = line.split()
+                    if len(lisp) != 10:
+                        break
+                    for c in range(4):
+                        if lisp[c][0] != '-':
+                            narr[c, num] = int(lisp[c])
+                    if lisp[c][0] != '-':
+                        narr[4, num] = int(lisp[5])
+                    for c in range(4):
+                        if lisp[c + 6][0] != '-':
+                            farr[c, num] = float(lisp[c + 6].replace('D', 'E'))
+                    num += 1
+
+    return {
+        'it': narr[0, :num],
+        'nf': narr[1, :num],
+        'nseg': narr[2, :num],
+        'nact': narr[3, :num],
+        'itls': narr[4, :num],
+        'stepl': farr[0, :num],
+        'tstep': farr[1, :num],
+        'projg': farr[2, :num],
+        'f': farr[3, :num]}

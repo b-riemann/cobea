@@ -1,16 +1,16 @@
 """
-routines for plotting COBEA results
+routines for plotting cobea results
 
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from matplotlib.pyplot import *
-from numpy import sqrt, pi, nanmax, abs, unwrap, NaN, where, any, squeeze, arange, ones
+from numpy import sqrt, pi, nanmax, abs, unwrap, NaN, where, any, squeeze, arange, ones, angle, exp
 
 ## Axes and Colors ##
 
 # Colors:
     # http://colorbrewer2.org/, number of classes: 3 (or 4), nature: qualitative, only show: colorblind safe, print friendly
-    # rslt: "4-class paired", colors: a6cee3, 1f78b4, b2df8a, (33a02c)
+    # result: "4-class paired", colors: a6cee3, 1f78b4, b2df8a, (33a02c)
 Re_clr = '#33a02c'  # 'mediumturquoise'
 Re_clr2 = '#b2df8a'  # 'mediumseagreen'
 Im_clr = '#a0332c'  # 'mediumturquoise', interchanged red and green
@@ -122,7 +122,7 @@ def monitor_label(mon_labels=0, spacing=0, ax=gca()):
 def corrector_label(corr_labels=[], spacing=0, dir='y', ax=gca()):
     """apply corrector labels to an axis"""
     if len(corr_labels) == 0:
-        if labeldir == 'x':
+        if dir == 'x':
             ax.set_xlabel('corrector index $k$')
         else:
             ax.set_ylabel('corrector index $k$')
@@ -213,94 +213,129 @@ def _ground_ylim(ax):
 ## monitor quantities ##
 
 
-def R_jmw(rslt, ax, m, direction='xy'):
+def R_jmw(result, m, w=None, direction='xy', ax=gca()):
     """plot real and imaginary parts of monitor vectors (incl. errors) into an axis for a given mode m"""
-    ds = [0, 1]
-    md = [str(m) + str(ds[0]), str(m) + str(ds[1])]
+    if w is None:
+        w = m
+    val = result.R_jmw[:, m, w]
+    err = result.error.R_jmw[:, m, w]
+    _plot_ReIm(ax, val, err)
 
-    for w in range(rslt.M):
-        val = rslt.R_jmw[:, m, w]
-        err = rslt.error.R_jmw[:, m, w]
-        _plot_ReIm(ax, val, err)
-
-    if 'invariants' in rslt.additional:  # normalized data
-        ax.set_ylabel('$R_{jmw}$ / m')
+    if 'invariants' in result.additional:  # normalized data
+        ax.set_ylabel(r'$\hat R_{j%i%c}$ / m' % (m, direction[w]))
     else:
-        ax.set_ylabel('$R_{jmw}$ / m')
+        ax.set_ylabel(r'$R_{j%i%c}$ / m' % (m, direction[w]))
     _draw_zero(ax)
 
 
-def cbeta_jmw(rslt, ax, m, comparison_data={}, direction='xy'):
+def comp_minimal(comparison_data):
+    d = {'name': 'comparison'}
+    d.update(comparison_data)
+    return d
+
+
+def cbeta_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=gca()):
     """plot beta resp. const*beta (incl. errors) into an axis for a given mode m"""
     # plot of beta or const*beta
-    if 'invariants' in rslt.additional:  # normalized data
-        betastr = r'$\beta'
-    else:
-        betastr = r'const. $\cdot \beta'
+    if w is None:
+        w = m
 
-    for w in range(rslt.M):
-        _plot_Re(ax, rslt.cbeta_jmw[:, m, w],
-                 rslt.error.cbeta_jmw[:, m, w], 'COBEA %s' % direction[w])
+    if 'beta_jmw' in comparison_data:
+        cm = comp_minimal(comparison_data)
 
-    if 'beta' in comparison_data:
-        ax.plot(arange(rslt.J), comparison_data['beta'][m], marker='.', color=modelc,
-                label=comparison_data['name'] + ' ' + direction[m], linewidth=0.5)
+    _plot_Re(ax, result.cbeta_jmw[:, m, w],
+             result.error.cbeta_jmw[:, m, w], 'cobea')
+    if 'beta_jmw' in comparison_data:
+        comp_beta = cm['beta_jmw'][:, m, w] if result.M > 1 else cm['beta_jmw'][:, m]
+        ax.plot(comp_beta, marker='.', color=modelc,
+                label=cm['name'], linewidth=0.5)
 
     _ground_ylim(ax)
-    ax.set_ylabel(betastr + '$ / m')
+
+    if 'invariants' in result.additional:  # normalized data
+        ax.set_ylabel(r'$\beta_{j%i%c}$ / m' % (m, direction[w]))
+    else:
+        ax.set_ylabel(r'$\beta_{j%i%c}$ / m' % (m, direction[w]))
 
 
-def delphi_jmw(rslt,ax,m,comparison_data={},yl=-1,direction='xy'):
+def _w_expand(comparison_key, m, w):
+    try:
+        return comparison_key[:, m, w]
+    except IndexError:
+        return comparison_key[:, m]
+
+
+def delphi_jmw(result, m, w=None, comparison_data={}, yl=-1, direction='xy', ax=gca()):
     """
     plot phase-advance per monitor (incl. errors) into an axis for a given mode m
     """
-    phi_jmw = rslt.phi_jmw
-    bpmj=arange(rslt.J)-0.5
-    if yl > 0: # background colors counting half integer advances
-        plus = yl*ones(rslt.J)
-        for j in xrange(rslt.J):
-            if phi_jmw[j,m,m] < 0:
+    if w is None:
+        w = m
+    bpmj = arange(result.J) - 0.5
+    if yl > 0 and w == m:  # background colors counting half integer advances
+        plus = yl * ones(result.J)
+        for j in range(result.J):
+            if result.phi_jmw[j, m, w] < 0:
                 plus[j] = NaN
-        ax.fill_between(bpmj,0*plus,plus,facecolor=Re_clr2,
-                alpha=0.4,linewidth=0)
+        ax.fill_between(bpmj, 0 * plus, plus, facecolor=Re_clr2,
+                        alpha=0.4, linewidth=0)
 
-    for w in range(rslt.M):
-        _plot_Re(ax, rslt.delphi_jmw[:, m, w], rslt.error.delphi_jmw[:, m, w],
-                'COBEA %s' % direction[w], xval=bpmj[1:])
+    _plot_Re(ax, result.delphi_jmw[:, m, w], result.error.delphi_jmw[:, m, w],
+             'cobea', xval=bpmj[1:])
 
-    if 'phi' in comparison_data:
-        phideg = 180 * unwrap(comparison_data['phi']
-                              [m, 1:] - comparison_data['phi'][m, :-1]) / pi
-        ax.plot(bpmj[1:], phideg, marker='.', color=modelc, linewidth=0.5,
-            label=comparison_data['name']+' '+direction[m])
+    if 'delphi_jmw' in comparison_data:
+        delphi_m = _w_expand(comparison_data['delphi_jmw'], m, w)
+        comparison_available = True
+    elif 'phi_jmw' in comparison_data:
+        phi_mw = _w_expand(comparison_data['phi_jmw'], m, w) * pi / 180
+        delphi_m = angle(exp(1.j * (phi_mw[1:] - phi_mw[:-1])), deg=True)
+        comparison_available = True
+    else:
+        comparison_available = False
 
-    #legend(ncol=3, loc=4, bbox_to_anchor=(1, 0.93))
-    ax.set_ylabel(r'$\Delta \phi_' + direction[m] + '$ / deg')
+    if comparison_available:
+        cm = comp_minimal(comparison_data)
+        ax.plot(bpmj[1:], delphi_m, marker='.', color=modelc, linewidth=0.5,
+                label=cm['name'] + ' ' + direction[w])
+
+    ax.set_ylabel(r'$\Delta \phi_' + direction[w] + '$ / deg')
     yl = ax.get_ylim()
     if yl[1] > 180:
-        ax.set_ylim((0,180))
+        ax.set_ylim((0, 180))
     else:
-        ax.set_ylim((0,yl[1]))
+        ax.set_ylim((0, yl[1]))
 
 
-
-def d_jw(rslt,ax,w,comparison_data,direction='xy'):
+def d_jw(result, w, comparison_data, direction='xy', ax=gca()):
     """
     plot const*dispersion (incl. errors) into an axis for a given direction w (0: x, 1: y)
     """
-    _plot_Re(ax, rslt.d_jw[:, w],
-        rslt.error.d_jw[:, w],
-             'COBEA $d_{j%c}$' % direction[w])
-    if 'dispersion' in comparison_data:
-        ax.plot(arange(rslt.J), comparison_data['dispersion'][w],
-            marker='.', color=modelc,
-            label=comparison_data['name'] + ' $D_%c$' % direction[w], linewidth=0.5)
-    #legend(ncol=2, loc=4, bbox_to_anchor=(1, 0.93))
+    _plot_Re(ax, result.d_jw[:, w],
+             result.error.d_jw[:, w],
+             'cobea $d_{j%c}$' % direction[w])
+
+    if 'd_jw' in comparison_data:
+        cm = comp_minimal(comparison_data)
+        ax.plot(arange(result.J), cm['d_jw'][:, w] if cm['d_jw'].ndim > 1 else cm['d_jw'],
+                marker='.', color=modelc,
+                label=cm['name'] + ' $D_%c$' % direction[w], linewidth=0.5)
+    # legend(ncol=2, loc=4, bbox_to_anchor=(1, 0.93))
     _draw_zero(ax)
     ax.set_ylabel('m')
 
 
-def monitor_results(rslt, m=0, comparison_data={}, direction='xy'):
+def _xstrlabel_subplots(n_fig, x_elems):
+    fig, ax = subplots(n_fig, 1, sharex=True)
+    [axi.grid(True, linestyle='--') for axi in ax]
+    siz = plot_size(plot_type=3 if x_elems > 35 else 6)
+    if n_fig < 4:
+        fig.set_size_inches((siz[0],siz[1]*0.75))
+    else:
+        fig.set_size_inches(siz)
+    return fig, ax
+
+
+def monitor_results(result, m=0, w=None, comparison_data={}, direction='xy'):
     """
     plot monitor results for mode m,
     optionally in comparison with comparison_data.
@@ -311,37 +346,22 @@ def monitor_results(rslt, m=0, comparison_data={}, direction='xy'):
         A :py:class:`cobea.model.Result` object.
     m : int
         mode index to plot results for
+    w : int
+        direction index to plot results for
     comparison_data : dict
         a dictionary containing optional data from alternative decoupled storage ring models, which may contain the following keys:
         'name': name of the algorithm or model used
-        'beta': an array of shape (rslt.M,rslt.J) that contains Courant-Snyder beta values for each direction and monitor
+        'beta': an array of shape (result.M,result.J) that contains Courant-Snyder beta values for each direction and monitor
         'phi': an array of the same shape as 'beta', containing Courant-Snyder betatron phases
         'dispersion': an array of the same shape, containing dispersion values
     """
+    if w is None:
+        w = m
+    show_dispersion = result.include_dispersion and m == w
+    fig, ax = _xstrlabel_subplots(4 if show_dispersion else 3, result.J)
 
-    n_fig=3
-    if rslt.include_dispersion:
-        n_fig+=1
-    fig, ax = subplots(n_fig,1,sharex=True)
-    for n in range(n_fig-1):
-        setp(ax[n].get_xticklabels(), visible=False)
-    [axi.grid(True, linestyle='--') for axi in ax]
-    if rslt.J > 35:
-        plot_type=3
-    else:
-        plot_type=6
-    siz = plot_size(plot_type)
-    if not rslt.include_dispersion:
-        fig.set_size_inches((siz[0],siz[1]*0.75))
-    else:
-        fig.set_size_inches(siz)
-
-
-    if not 'name' in comparison_data:
-        comparison_data['name'] = 'comparison'
-
-    #stri = 'COBEA' + ' tune: %.4f' % rslt.tune(m)
-    #stri += ' $\pm$ %.4f' % abs(rslt.error.mu_m[m] / (2 * pi))
+    #stri = 'cobea' + ' tune: %.4f' % result.tune(m)
+    #stri += ' $\pm$ %.4f' % abs(result.error.mu_m[m] / (2 * pi))
     #ax1.text(0, 1.1, stri, horizontalalignment='left', transform=ax1.transAxes,
     #        color=Re_clr, fontweight='bold', size='large')
     #if 'tunes' in comparison_data:
@@ -349,74 +369,96 @@ def monitor_results(rslt, m=0, comparison_data={}, direction='xy'):
     #         horizontalalignment='right', transform=ax1.transAxes,
     #         color=modelc, fontweight='bold', size='large')
 
-    R_jmw(rslt,ax[0],m,direction=direction)
+    R_jmw(result,m,w,direction=direction,ax=ax[0])
     ax[0].legend(ncol=2)
 
-    cbeta_jmw(rslt,ax[1],m,comparison_data,direction=direction)
+    cbeta_jmw(result,m,w,comparison_data,direction=direction,ax=ax[1])
     ax[1].legend(ncol=2)
 
-    delphi_jmw(rslt,ax[2],m,comparison_data,direction=direction)
+    delphi_jmw(result,m,w,comparison_data,direction=direction,ax=ax[2])
 
-    if rslt.include_dispersion:
-        d_jw(rslt,ax[3],m,comparison_data,direction=direction)
+    if show_dispersion:
+        d_jw(result,w,comparison_data,direction=direction,ax=ax[3])
         ax[3].legend(ncol=2)
 
-    monitor_label(rslt.topology.mon_names, ax=ax[-1])
+    monitor_label(result.topology.mon_names, ax=ax[-1])
     return fig
 
 
 ## corrector quantities
 
 
-def A_km(rslt, m, ax=gca()):
+def A_km(result, m, ax=gca()):
     """plot real and imaginary parts of corrector parameters (incl. errors) into an axis for a given mode m"""
-    _plot_ReIm(ax, rslt.A_km[:, m], rslt.error.A_km[:, m])
+    _plot_ReIm(ax, result.A_km[:, m], result.error.A_km[:, m])
     ax.set_ylabel('$A_{km}$ / a.u.')
 
 
-def cbeta_km(rslt, m, ax=gca()):
+def cbeta_km(result, m, comparison_data={}, ax=gca()):
     """
     plot const*beta at correctors assuming
     decoupled optics and thin correctors
     ToDo: errors for this quantity
     """
-    _plot_Re(ax, rslt.cbeta_km[:, m], 0)
+    _plot_Re(ax, result.cbeta_km[:, m], 0, label='cobea')
+    if 'beta_km' in comparison_data:
+        cm = comp_minimal(comparison_data)
+        ax.plot(cm['beta_km'][:,m], marker='.',
+                color=modelc, label=cm['name'])
+        ax.legend()
     ax.set_ylabel(r'$|A_{km}| \approx $ const $\beta_km$ / a.u.')
 
 
-def delphi_km(rslt, m, ax=gca()):
-    bpmk = arange(rslt.K - 1) + 0.5
-    _plot_Re(ax, rslt.delphi_km[:, m], 0, xval=bpmk)
+def delphi_km(result, m, comparison_data={}, ax=gca()):
+    bpmk = arange(result.K - 1) + 0.5
+    _plot_Re(ax, result.delphi_km[:, m], 0, xval=bpmk, label='cobea')
+    if 'delphi_km' in comparison_data:
+        cm = comp_minimal(comparison_data)
+        ax.plot(bpmk, cm['delphi_km'][:,m], marker='.',
+                color=modelc, label=cm['name'])
+        ax.legend()
     ax.set_ylabel('$\Delta$ arg($A_{km}$) / deg')
 
 
-def corrector_results(rslt, m=0):
-    """create a figure with corrector results for a given mode m"""
-    n_fig=3
-    fig, ax = subplots(n_fig,1,sharex=True)
-    for n in range(n_fig-1):
-        setp(ax[n].get_xticklabels(), visible=False)
-    [axi.grid(True, linestyle='--') for axi in ax]
-    if rslt.K > 35:
-        plot_type=3
+def b_k(result, w=0, comparison_data={}, direction='xy', ax=gca()):
+    cm = comp_minimal(comparison_data)
+    if result.b_k.ndim > 1:
+        for w in range(result.b_k.shape[1]):
+            _plot_Re(ax, result.b_k[:,w], result.error.b_k[:,w], label='cobea '+direction[w])
+            if 'b_k' in cm:
+                ax.plot(cm['b_k'][:,w], marker='.', color=modelc, label=cm['name']+' '+direction[w])
+                ax.legend()
+        ax.set_ylabel(r'$b_{kw}$ / a.u.')
     else:
-        plot_type=6
-    change_figsize(fig,plot_type)
+        _plot_Re(ax, result.b_k, result.error.b_k, label='cobea')
+        if 'b_k' in cm:
+            ax.plot(cm['b_k'], marker='.', color=modelc, label=cm['name'])
+            ax.legend()
+        ax.set_ylabel(r'$b_k$ / a.u.')
+    _draw_zero(ax)
 
-    A_km(rslt,m,ax[0])
+
+def corrector_results(result, m=0, comparison_data={}, direction='xy'):
+    """create a figure with corrector results for a given mode m"""
+    fig, ax = _xstrlabel_subplots(4 if result.include_dispersion else 3, result.K)
+
+    A_km(result, m, ax=ax[0])
     #ax[0].legend(ncol=2)
 
-    cbeta_km(rslt,m,ax[1])
-    #ax[1].legend(ncol=2)
+    cbeta_km(result, m, comparison_data, ax=ax[1])
 
-    delphi_km(rslt,m,ax[2])
-    corrector_label(rslt.topology.corr_names, dir='x')
+    delphi_km(result, m, comparison_data, ax=ax[2])
+
+    if result.include_dispersion:
+        b_k(result, m, comparison_data, direction, ax=ax[3])
+
+    corrector_label(result.topology.corr_names, dir='x', ax=ax[-1])
     return fig
 
 
-def plot_result(result, print_figures=True, prefix='.', comparison_data={}, direction='xy', plot_flags='mcdt'):
+def plot_result(result, print_figures=True, prefix='', comparison_data={}, direction='xy', plot_flags='mcdtv'):
     """
-    plot COBEA results.
+    plot cobea results.
 
     Parameters
     ----------
@@ -429,7 +471,7 @@ def plot_result(result, print_figures=True, prefix='.', comparison_data={}, dire
     comparison_data : dict
         a dictionary containing optional data from alternative decoupled storage ring models, which may contain the following keys:
         'name': name of the algorithm or model used
-        'beta': an array of shape (rslt.M,rslt.J) that contains Courant-Snyder beta values for each direction and monitor
+        'beta': an array of shape (result.M,result.J) that contains Courant-Snyder beta values for each direction and monitor
         'phi': an array of the same shape as 'beta', containing Courant-Snyder betatron phases
         'dispersion': an array of the same shape, containing dispersion values
     direction : str
@@ -440,13 +482,23 @@ def plot_result(result, print_figures=True, prefix='.', comparison_data={}, dire
         'c': corrector_results -> corrector_m*.pdf
         'd': plot_Dev_err, hist -> Dev_err_w*.pdf, hist_w*.pdf
         't': plot_topology -> topology.pdf
-        'c': convergence information -> convergence.pdf. Only works if convergence information is available.
+        'v': convergence information -> convergence.pdf. Only works if convergence information is available.
     """
     fig = prepare_figure(plot_type=0)
 
-    erm = result.additional['err']
+    if 'm' in plot_flags:
+        for m in range(result.M):
+            for w in range(result.M):
+                fig = monitor_results(result, m, w, comparison_data, direction)
+                printshow(print_figures, '%smonitor_m%i%c.pdf' % (prefix,m,direction[w]), fig)
+
+    if 'c' in plot_flags:
+        for m in range(result.M):
+            fig = corrector_results(result, m, comparison_data, direction)
+            printshow(print_figures, prefix + 'corrector_m%i.pdf' % m, fig)
 
     if 'd' in plot_flags:
+        erm = result.additional['err']
         for w in range(result.M):
             fig = plot_Dev_err(result, w)
             printshow(print_figures, prefix + 'Dev_err_w%i.pdf' % w, fig)
@@ -456,29 +508,22 @@ def plot_result(result, print_figures=True, prefix='.', comparison_data={}, dire
             xlabel('deviations / ' + result.unit)
             printshow(print_figures, prefix + 'hist_w%i.pdf' % w, fig)
 
+    if 't' in plot_flags:
+        fig = plot_topology(result.topology)
+        printshow(print_figures, prefix + 'topology.pdf', fig)
 
-    if 'c' in plot_flags and 'conv' in result.additional:  # convergence information is available
+    if 'v' in plot_flags and 'conv' in result.additional:  # convergence information is available
         change_figsize(fig, plot_type=2)  # 5
         # ax1=subplot(1,2,1)
         # xlabel('start-value iterations')
         # ax2=subplot(1,2,2,sharey=ax1)
         # setp( ax2.get_yticklabels(), visible=False)
-        semilogy(result.additional['conv']['it'], result.additional['conv']['f'])
-        xlabel('L-BFGS iterations')
-        ylabel('residual squared error $\chi^2$')
-        xlim((0, result.additional['conv']['it'][-1]))
-        printshow(print_figures, prefix + 'convergence.pdf')
-
-    if 'm' in plot_flags:
-        for m in range(result.M):
-            fig = monitor_results(result, m, comparison_data, direction=direction)
-            printshow(print_figures, prefix + 'monitor_m%i.pdf' % m, fig)
-            fig = corrector_results(result, m)
-            printshow(print_figures, prefix + 'corrector_m%i.pdf' % m, fig)
-
-    if 't' in plot_flags:
-        fig = plot_topology(result.topology)
-        printshow(print_figures, prefix + 'topology.pdf', fig)
+        fig, ax = subplots()
+        ax.semilogy(result.additional['conv']['it'], result.additional['conv']['f'])
+        ax.set_xlabel('L-BFGS iterations')
+        ax.set_ylabel('residual squared error $\chi^2$')
+        ax.set_xlim((0, result.additional['conv']['it'][-1]))
+        printshow(print_figures, prefix + 'convergence.pdf', fig)
 
     #for part in range(2):
     #    subplot(1, 2, part + 1)

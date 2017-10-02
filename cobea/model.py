@@ -47,9 +47,9 @@ class BasicModel():
     def __init__(self, K,J,M, init_fun=empty):
         self.R_jmw = init_fun((J, M, M), dtype=complex)
         self.A_km = init_fun((K, M), dtype=complex)
-        self.d_jw = init_fun((J, M))
-        self.b_k = init_fun((K,))
-        self.mu_m = init_fun((M,))
+        self.d_jw = init_fun((J, M), dtype=float)
+        self.b_k = init_fun((K,), dtype=float)
+        self.mu_m = init_fun((M,), dtype=float)
 
         self.K = K
         self.J = J
@@ -152,13 +152,13 @@ class BEModel(BasicModel):
 
         # number of search space dimensions:
         self.ndim = self.M + 2 * self.A_km.size + 2 * self.R_jmw.size  # D[k,m], R[j,m,d]
-        if self.include_dispersion:
+        if include_dispersion:
             self.ndim += self.K + self.J * self.M  # += K+J*D
+        self.include_dispersion = include_dispersion
 
         # pre-allocate worker arrays for optimization
         self._c = empty((M, K, J, M), dtype=complex)
         self._x = empty(self.ndim)
-        self.include_dispersion = include_dispersion
 
     def _offsets(self):
         """
@@ -417,6 +417,7 @@ class BEModel(BasicModel):
         self.R_jmw[:,m,:] = self.R_jmw[:,m,:].conj()
         self.A_km[:,m] = self.A_km[:,m].conj()
 
+
     def nu_m(self,m):
         nu_m = self.mu_m[m] / (2*pi)
         if nu_m < 0:
@@ -582,7 +583,7 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.14'
+        self.version = '0.15'
         self.matrix = response.matrix
         self.include_dispersion = response.include_dispersion
         self.unit = response.unit
