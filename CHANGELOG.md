@@ -1,3 +1,9 @@
+## Version 0.16 ##
+
+* A [reference tool](examples/reference_tool.py) has been added to compare results of different runs.
+* Output of cobea.mcs.layer has been reduced.
+* Postprocessing layer is now a separate function (cobea.pproc.layer).
+
 ## Version 0.15 ##
 
 * A usage example has been added in form of a random response object generator

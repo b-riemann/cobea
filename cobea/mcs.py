@@ -368,10 +368,9 @@ def mcs_core(Dev, monidx, corridx, splitidx, L, include_dispersion):
         dsp = 0
         b = 0 # dsp, b are casted into zeros at final run in function 'layer' 
     rmsResidual = sum(Dev_res**2)
-    #print('local method> squared error %s' % rmsResidual)
-    print('       mons: %i+%i, corrs: %i+%i, chi^2 = %.3e' %
-          (len(partmons[0]), len(partmons[1]),
-           len(partcorrs[0]), len(partcorrs[1]), rmsResidual))
+    #print('       mons: %i+%i, corrs: %i+%i, chi^2 = %.3e' %
+    #      (len(partmons[0]), len(partmons[1]),
+    #       len(partcorrs[0]), len(partcorrs[1]), rmsResidual))
     return rmsResidual, Dev_res, monvec_j, A_km, mum, dsp, b, pcaDevs, Sg
 
 
@@ -412,8 +411,7 @@ def local_optimization(Dev, monidx, corridx, Nelems, include_dispersion, runs):
     and find optimal splitidx"""
     splitidx = empty([2, 2], dtype='int')
 
-
-    rms = empty(runs)
+    rms = empty(runs, dtype=float)
     for n in range(runs):  # range(len(monidx)-spl-1):
         dice_splitpoints(n, monidx, splitidx)
         rms[n] = local_step(Dev, monidx, corridx, splitidx,
@@ -476,6 +474,7 @@ def layer(response, trials = -1):
         result.mu_m[:], result.d_jw[:], result.b_k[:], \
         pcaDevs, Sg = mcs_core(Dev_in, monidx, corridx, splitidx,
                                line_len, result.include_dispersion)
+    print('       chi^2: %.3e' % ResM)
     mcs_dict = {'monidx': monidx, 'corridx': corridx, 'splitidx': splitidx,
                 'pca_orbits': pcaDevs, 'pca_singvals': Sg}
     result.additional['MCS'] = mcs_dict

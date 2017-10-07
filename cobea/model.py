@@ -551,6 +551,16 @@ class Response():
         self.matrix = self.matrix[:, monitor_mask]
         print('Rsp> monitor %s removed' % monitor_name)
 
+    def save(self,filename):
+        """
+        save the Response object as a pickle file with the given filename.
+        The object can be reloaded using :py:func:`cobea.load_result`
+        (which simply uses pickle)
+        """
+        with open(filename,'wb') as f:
+            dump(self, f, protocol=2)
+        print('Response object saved in '+filename)
+
 
 class Result(BEModel):
     """
@@ -583,7 +593,7 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.15'
+        self.version = '0.16'
         self.matrix = response.matrix
         self.include_dispersion = response.include_dispersion
         self.unit = response.unit
@@ -683,7 +693,7 @@ class Result(BEModel):
         """
         with open(filename,'wb') as f:
             dump(self, f, protocol=2)
-        print('Result saved in '+filename)
+        print('Result object saved in '+filename)
 
     def __str__(self):
         s = '--global summary--\n'

@@ -15,12 +15,11 @@ from numpy import asarray, sum, empty, sign, sqrt, NaN
 from time import time  # for benchmarks
 from pickle import load
 
-from .mcs import find_indices
 from .mcs import layer as startvalue_layer
 
 from scipy.optimize.lbfgsb import fmin_l_bfgs_b  # minimize
 
-from .pproc import normalize_using_drift, guess_mu_sign, l_bfgs_iterate
+from .pproc import layer as pproc_layer
 from .model import Response, Result
 
 
@@ -100,21 +99,7 @@ def cobea(response, drift_space=None, convergence_info=False):
     print('elapsed time (MCS+Opt): %.2f s' % coretime)
     result.additional['coretime'] = coretime
 
-    if convergence_info:
-        # read in convergence information
-        result.additional['conv'] = l_bfgs_iterate()
-
-    try:  # assume that drift_space information was given
-        di = find_indices(drift_space[:2],result.topology.mon_names)
-        print(("PPr> normalizing using drift\n"
-               "       %s -- %s with length ~ %.4f m.") % tuple(drift_space))
-        normalize_using_drift(result, di, drift_space[2])
-    except TypeError: # drift_space is None
-        print('PPr> no drift space given, guessing tune quadrant by phase advance sign')
-        guess_mu_sign(result)
-
-    print('PPr> computing fit errors')
-    result.update_errors()
+    pproc_layer(result, drift_space, convergence_info)
     print(result)
     return result
 

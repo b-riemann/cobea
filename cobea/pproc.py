@@ -5,7 +5,7 @@ Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 
 from numpy import conj, empty, zeros, eye, dot, sign, asarray
-
+from .mcs import find_indices
 
 def symplectic_form(D=2):
     """
@@ -70,7 +70,6 @@ def invariants_from_eigenvectors(Q):
     invariant = empty(M, dtype=complex)
     for m in range(M):
         invariant[m] = -1.j * dot(conj(Q[m].T), dot(Om, Q[m])) / 2
-    print('     invariants: ' + str(invariant.real))
     return invariant.real
 
 
@@ -195,3 +194,34 @@ def l_bfgs_iterate(alloc_items=10000):
         'tstep': farr[1, :num],
         'projg': farr[2, :num],
         'f': farr[3, :num]}
+
+
+def layer(result, drift_space=None, convergence_info=False):
+    """
+    Postprocessing layer
+
+    Parameters
+    ----------
+    result : object
+        A :py:class:`cobea.model.Result` object. The object is modified during processing.
+    drift_space : iterable
+        if not None, a tuple or list with 3 elements (monitor name 1, monitor name 2, drift space length / m)
+    convergence_info : bool
+        if True, convergence information from L-BFGS is added to the result dictionary (before saving).
+    """
+    if convergence_info:
+        # read in convergence information
+        result.additional['conv'] = l_bfgs_iterate()
+
+    try:  # assume that drift_space information was given
+        di = find_indices(drift_space[:2],result.topology.mon_names)
+        print(("PPr> normalizing using drift\n"
+               "       %s -- %s with length ~ %.4f m.") % tuple(drift_space))
+        normalize_using_drift(result, di, drift_space[2])
+        print("       invariants: %s" % result.additional['invariants'])
+    except TypeError: # drift_space is None
+        print('PPr> no drift space given, guessing tune quadrant by phase advance sign')
+        guess_mu_sign(result)
+
+    print('PPr> computing fit errors')
+    result.update_errors()
