@@ -91,7 +91,7 @@ def _reorder(orb_one, orb_two, corrnames):
     return Orb
 
 
-def import_response(filename, normalized=True, remove_monitors=('BPM12',)):
+def import_response(filename, normalized=True, remove_monitors=('BPM12',), line_file='delta_input/line.text'):
     """
     Convert a DELTA response file into a cobea Result object.
     """
@@ -99,7 +99,7 @@ def import_response(filename, normalized=True, remove_monitors=('BPM12',)):
     orb = _reorder(orb_one, orb_two, corr_names)
     r_kjw = nanmean(orb, axis=0)
     response = Response(r_kjw, corr_names, ['BPM%02i' % j for j in bpms],
-                   read_elemnames('HK_VK_BPM.Dat'), include_dispersion=True, unit='m/rad')
+                        read_elemnames(line_file), include_dispersion=True, unit='m/rad')
     for monitor in remove_monitors:
         response.pop_monitor(monitor)
     return response, pulser_tunes
@@ -164,7 +164,7 @@ if __name__ == '__main__':
             elif sys.argv[2] == 'noprint':
                 printresults = False
     else:
-        filestr = 'delta/response.100708-1'
+        filestr = 'delta_input/response.100708-1'
 
     machine = 'delta'
     drift = 'u250'

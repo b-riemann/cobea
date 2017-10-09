@@ -25,7 +25,8 @@ from .model import Response, Result
 
 def read_elemnames(finame):
     """
-    A helper function to read element names from text files into a list of strings. Standard input is a text file with linebreaks between elements.
+    A helper function to read element names from text files into a list of strings.
+    Standard input is a text file with linebreaks between elements.
     """
     with open(finame) as fi:
         elemnames = [line.split()[0] for line in fi.readlines()
