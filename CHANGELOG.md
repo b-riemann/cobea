@@ -1,3 +1,8 @@
+## Version 0.17 ##
+
+* wrapper for DELTA storage ring (standard response files) has been added
+* Some cleanup happened for the interiors of cobea.mcs and reference_tool
+
 ## Version 0.16 ##
 
 * A [reference tool](examples/reference_tool.py) has been added to compare results of different runs.

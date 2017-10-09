@@ -593,7 +593,7 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.16'
+        self.version = '0.17'
         self.matrix = response.matrix
         self.include_dispersion = response.include_dispersion
         self.unit = response.unit

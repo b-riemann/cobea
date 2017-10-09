@@ -4,7 +4,7 @@ Monitor-Corrector Subset (MCS) algorithm submodule
 MCS can be used as start-value layer of COBEA.
 """
 
-from numpy import arange, angle, conj, copy, reshape, empty, dot, asarray, exp, sign, sqrt, NaN, \
+from numpy import arange, angle, conj, reshape, empty, dot, asarray, exp, sign, sqrt, NaN, \
     nanargmin, isnan, mod, nonzero, sum, abs
 from numpy.linalg import pinv
 from scipy.linalg import lstsq, svd, eig
@@ -112,7 +112,7 @@ def corrector_system_k(Dev_fd, R_fmd, cE_fm):
     return compsol, res, reshape(covec_rc, Dev_fd.shape), s
 
 
-def corrector_systems(Dev, monvec, bpm_s , corr_s, mus, printmsg=True, E=[]):
+def corrector_systems(Dev, monvec, bpm_s , corr_s, mus, printmsg=True, E=None):
     """set up and solve the corrector equation systems.
     Dev[k,f,d]: Deviations at all correctors for fast BPMs.
     monvec: all input monitor vectors.
@@ -120,8 +120,8 @@ def corrector_systems(Dev, monvec, bpm_s , corr_s, mus, printmsg=True, E=[]):
     D[k,m]: corrector parameters
     complexsolv parameters as arrays
     """
-    if len(E) == 0:
-        cE = conj(phasejump_coeffs(bpm_s , corr_s, mus))
+    if E is None:
+        cE = phasejump_coeffs(bpm_s, corr_s, mus).conj()
     else:
         cE = E.conj()
 
@@ -263,18 +263,6 @@ def oneturn_eigen(T_zero, T_one):
         return [angle(mum[0])], Z[:, 0]
 
 
-def shiftring_eigen(Tpart):
-    Tbar = empty((8, 8), dtype=Tpart[0].dtype)
-    Tbar[4:, :4] = Tpart[0]
-    Tbar[:4, 4:] = Tpart[1]
-    lamb, Z = eig(Tbar)
-    for s in range(8):
-        Z[4:, s] /= lamb[s]
-    lamb *= lamb  # lamb**2
-    #print('abs eigenvalues: '+str(abs(lamb[[0,4]])))
-    return abs(angle(lamb[[0, 4]])), Z[:4, [0, 4]]
-
-
 def decomposite_eigenvec(Z):
     # monvecs_f = zeros((Z.shape[0]/2,2,2),dtype=Z.dtype)  #[f,m,d]
     M = int( Z.shape[0] / 2 )
@@ -285,32 +273,32 @@ def decomposite_eigenvec(Z):
     return monvecs_fmw
 
 
-def part_mons_corrs(monidx, corridx, splitidx, L):
+def part_mons_corrs(mon_idx, cor_idx, split_idx, L):
     # partmons[half], partcorrs[half] for each half:
     # L: should be J+K, len(line)
     partmons = [[], []]
     partcorrs = [[], []]
 
     # first part
-    for elnum in range(splitidx[0, 0], splitidx[1, 1] + 1):
-        if elnum in monidx:
-            partmons[0].append(monidx.index(elnum))
-        elif elnum in corridx:
+    for elnum in range(split_idx[0, 0], split_idx[1, 1] + 1):
+        if elnum in mon_idx:
+            partmons[0].append(mon_idx.index(elnum))
+        elif elnum in cor_idx:
             # remember: correctors must be outside, not inside of resp. part
-            ci = corridx.index(elnum)
-            if (elnum > splitidx[0, 1]) & (elnum < splitidx[1, 0]):
+            ci = cor_idx.index(elnum)
+            if (elnum > split_idx[0, 1]) & (elnum < split_idx[1, 0]):
                 partcorrs[1].append(ci)
         else:
             pass
 
     # second part. runs over s=0 point, hence mod is required
-    for elnum in mod(range(splitidx[1, 0], splitidx[0, 1] + 1 + L), L):
-        if elnum in monidx:
-            partmons[1].append(monidx.index(elnum))
-        elif elnum in corridx:
+    for elnum in mod(range(split_idx[1, 0], split_idx[0, 1] + 1 + L), L):
+        if elnum in mon_idx:
+            partmons[1].append(mon_idx.index(elnum))
+        elif elnum in cor_idx:
             # remember: correctors must be outside, not inside of resp. part
-            ci = corridx.index(elnum)
-            if (elnum > splitidx[1, 1]) | (elnum < splitidx[0, 0]):
+            ci = cor_idx.index(elnum)
+            if (elnum > split_idx[1, 1]) | (elnum < split_idx[0, 0]):
                 partcorrs[0].append(ci)
         else:
             pass
@@ -339,90 +327,102 @@ def pca_tracking(Dev, partmons, partcorrs):
     return Tpart, pcaDevs, Sg, pcaCoeffs
 
 
-def mcs_core(Dev, monidx, corridx, splitidx, L, include_dispersion):
+def mcs_core(result, mon_idx, cor_idx, split_idx):
+    """
+    MCS routine for a given monitor quadruplet.
+
+    Parameters
+    ----------
+    result : object
+        A valid :py:class:`cobea.model.Result` object.
+    mon_idx : array
+        1d array of integer positions of all considered monitors in result.line
+    cor_idx: array
+        1d array ... considered correctors in result.line
+    split_idx : array_like
+        a 2x2 array of monitor indices for the monitor quadruplet.
+
+    Returns
+    -------
+    output : list
+        ToDo for documentation
+    """
 
     # PCA for mum, Z, local systems elsewhere
-    partmons, partcorrs = part_mons_corrs(monidx, corridx, splitidx, L)
-    if any([len(partcorrs[m]) < 2 * Dev.shape[2] for m in range(2)]):
+    partmons, partcorrs = part_mons_corrs(mon_idx, cor_idx, split_idx, result.J + result.K)
+
+    if any([len(partcorrs[m]) < 2 * result.M for m in range(2)]):
         #print('     not enough correctors. next.')
         return NaN, 0, 0, 0, 0, 0, 0, 0, 0
 
-    Tpart, pcaDevs, Sg, pcaCoeffs = pca_tracking(Dev, partmons, partcorrs)
-    mum, Z = oneturn_eigen(Tpart[0], Tpart[1])
-    #mum, Z = shiftring_eigen(Tpart)
-    #print('shiftring ' + repr(mum/(2*pi)))
+    Tpart, pcaDevs, Sg, pcaCoeffs = pca_tracking(result.matrix, partmons, partcorrs)
+
+    result.mu_m[:], Z = oneturn_eigen(Tpart[0], Tpart[1])
+
     monvecs_f = decomposite_eigenvec(Z)
     if monvecs_f.dtype==float:
         #print('     real eigenvectors / defective matrix. next.')
         return NaN, 0, 0, 0, 0, 0, 0, 0, 0
-    fi = find_indices(splitidx[0], monidx)
-    A_km, Res, Dev_fast_rc, SV = corrector_systems(
-        Dev[:, fi, :], monvecs_f, splitidx[0], corridx, mum, printmsg=False)
-    monvec_j, rmsResidual, Dev_rc, SvM = monitor_systems(
-        Dev, A_km, monidx, corridx, mum, printmsg=False)
+    fi = find_indices(split_idx[0], mon_idx)
+    result.A_km[:], Res, Dev_fast_rc, SV = corrector_systems(result.matrix[:, fi, :],
+                                                   monvecs_f, split_idx[0],
+                                                   cor_idx, result.mu_m,
+                                                   printmsg=False)
+    result.R_jmw[:], rmsResidual, Dev_rc, SvM = monitor_systems(result.matrix,
+                                                         result.A_km, mon_idx,
+                                                         cor_idx, result.mu_m,
+                                                         printmsg=False)
 
-    if include_dispersion:
-        Dev_res, dsp, b = dispersion_process(Dev, Dev_rc)
+    if result.include_dispersion:
+        Dev_res, result.d_jw[:], result.b_k[:] = dispersion_process(result.matrix, Dev_rc)
     else:
-        Dev_res = Dev - Dev_rc
-        dsp = 0
-        b = 0 # dsp, b are casted into zeros at final run in function 'layer' 
+        Dev_res = result.matrix - Dev_rc
+        result.d_jw[:] = 0# dsp = 0
+        # b = 0 # dsp, b are casted into zeros at final run in function 'layer'
     rmsResidual = sum(Dev_res**2)
     #print('       mons: %i+%i, corrs: %i+%i, chi^2 = %.3e' %
     #      (len(partmons[0]), len(partmons[1]),
     #       len(partcorrs[0]), len(partcorrs[1]), rmsResidual))
-    return rmsResidual, Dev_res, monvec_j, A_km, mum, dsp, b, pcaDevs, Sg
+    return rmsResidual, Dev_res, pcaDevs, Sg
 
 
-def local_step(Dev, monidx, corridx, splitidx, L, include_dispersion):
-    rmsResidual, Dev_rc, monvec_j, A_km, mum, dsp, b, pcaDevs, Sg = mcs_core(
-        Dev, monidx, corridx, splitidx, L, include_dispersion)
-    return rmsResidual
-
-
-def dice_splitpoints(n, monidx, splitidx):
-    """numpy arrays are passed by reference, so splitidx can be overwritten without return"""
+def dice_splitpoints(n, mon_idx, split_idx):
+    """
+    Map the linear index n to bpm quadruplet index split_idx.
+    As numpy arrays are passed by reference, split_idx is overwritten by this function.
+    """
     if n < 0:
         shift = 0
         m = -n
     else:
-        elmo = len(monidx) - 1
+        elmo = len(mon_idx) - 1
         shift = int(n / elmo)
         m = n - shift * elmo
         shift += 1
-        if m >= len(monidx) / 2 - shift:
-            m -= int( len(monidx) / 2 ) - shift
+        if m >= len(mon_idx) / 2 - shift:
+            m -= int( len(mon_idx) / 2 ) - shift
             shift = -(shift - 1)
-    shift += int( len(monidx) / 2 )
-    splitidx[0, 0] = monidx[m]
-    splitidx[0, 1] = monidx[m + 1]
-    splitidx[1, 0] = monidx[m + shift - 1]
-    splitidx[1, 1] = monidx[m + shift]
+    shift += int( len(mon_idx) / 2 )
+    split_idx[0, 0] = mon_idx[m]
+    split_idx[0, 1] = mon_idx[m + 1]
+    split_idx[1, 0] = mon_idx[m + shift - 1]
+    split_idx[1, 1] = mon_idx[m + shift]
 
 
-def dice_size(Lmonidx, maxstrain):
-    # spl = Lmonidx # 1 was not substracted before, but fits better!
-    return maxstrain * (Lmonidx - 1)
+def local_optimization(result, mon_idx, cor_idx, trials):
+    split_idx = empty((2, 2), dtype=int)
 
-
-def local_optimization(Dev, monidx, corridx, Nelems, include_dispersion, runs):
-    """solve CES and MES systems
-    compute residual Res error
-    and find optimal splitidx"""
-    splitidx = empty([2, 2], dtype='int')
-
-    rms = empty(runs, dtype=float)
-    for n in range(runs):  # range(len(monidx)-spl-1):
-        dice_splitpoints(n, monidx, splitidx)
-        rms[n] = local_step(Dev, monidx, corridx, splitidx,
-            Nelems, include_dispersion)
+    rms = empty(trials, dtype=float)
+    for n in range(trials):
+        dice_splitpoints(n, mon_idx, split_idx)
+        rms[n] = mcs_core(result, mon_idx, cor_idx, split_idx)[0]
     if all(isnan(rms)):
         print('local optimization failed (few correctors). increase number of runs.')
     else:
         nmin = nanargmin(rms)
 
-        dice_splitpoints(nmin, monidx, splitidx)
-        return splitidx, rms
+        dice_splitpoints(nmin, mon_idx, split_idx)
+        return split_idx, rms
 
 
 def dispersion_process(Dev, Dev_rc):
@@ -447,35 +447,30 @@ def layer(response, trials = -1):
 
     Parameters
     ----------
-    response : object
+    result : object
         A valid :py:class:`cobea.model.Response` object.
     trials: int
         Number of different monitor subsets tried for MCS. If set to -1, value is set automatically.
     """
 
+    result = Result(response) # preallocate result (initialized by 'empty')
+
     # 1) Run MCS through a number (locruns) of monitor subsets and pick the one with the smallest chi^2.
-    Dev_in = copy(response.matrix)
-    line_len = sum(response.topology.S_jk.shape) #result.J + result.K
-    monidx = topo_indices(response.topology.mon_names, response.topology.line)
-    corridx = topo_indices(response.topology.corr_names, response.topology.line)
+    mon_idx = topo_indices(result.topology.mon_names, result.topology.line)
+    cor_idx = topo_indices(result.topology.corr_names, result.topology.line)
 
     if trials == -1:
-        trials = dice_size(len(monidx), 2)
-    print('MCS> running monitor doublet search (%i trials)' % trials)
-    splitidx, rmserr = local_optimization(Dev_in, monidx, corridx,
-                                          line_len, response.include_dispersion, trials)
-    print('MCS> monitor doublet search finished. Using')
-    for split_line in splitidx:
-        print('       %s -- %s' % tuple([response.topology.line[x] for x in split_line]))
+        trials = 2 * (result.J - 1)
+    print('MCS> running monitor quadruplet search (%i trials)' % trials)
+    split_idx, rmserr = local_optimization(result, mon_idx, cor_idx, trials)
+    print('MCS> monitor quadruplet search finished. Using')
+    for split_line in split_idx:
+        print('       %s -- %s' % tuple([result.topology.line[x] for x in split_line]))
 
     # 2) (re)Compute the result for the best (smallest chi^2) monitor subset.
-    result = Result(response) # preallocate result (initialized by 'empty')
-    ResM, Dev_rc, result.R_jmw[:], result.A_km[:], \
-        result.mu_m[:], result.d_jw[:], result.b_k[:], \
-        pcaDevs, Sg = mcs_core(Dev_in, monidx, corridx, splitidx,
-                               line_len, result.include_dispersion)
+    ResM, Dev_rc, pcaDevs, Sg = mcs_core(result, mon_idx, cor_idx, split_idx)
     print('       chi^2: %.3e' % ResM)
-    mcs_dict = {'monidx': monidx, 'corridx': corridx, 'splitidx': splitidx,
+    mcs_dict = {'mon_idx': mon_idx, 'cor_idx': cor_idx, 'split_idx': split_idx,
                 'pca_orbits': pcaDevs, 'pca_singvals': Sg}
     result.additional['MCS'] = mcs_dict
     return result
