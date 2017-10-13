@@ -6,6 +6,7 @@ Bernard Riemann (bernard.riemann@tu-dortmund.de
 from numpy import abs
 from numpy.random import randint, randn, uniform
 from cobea.model import BEModel, Topology, Response
+from cobea.pproc import normalize_using_drift
 from pickle import dump, load
 from os import makedirs
 

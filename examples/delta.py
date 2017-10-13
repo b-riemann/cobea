@@ -171,10 +171,8 @@ if __name__ == '__main__':
     save_path = 'delta_output/%s/' % filestr.split('/')[-1]
 
 
-    response, tbt_tunes = import_response(filestr, normalized=True)
-    #response.pop_monitor('BPM07')
+    response, tbt_tunes = import_response(filestr)
     response.save(save_path + 'response_input.pickle')
-
     tbt_data_in_file = {'name': 'TbT', 'tunes': tbt_tunes}
 
     try:
@@ -192,7 +190,6 @@ if __name__ == '__main__':
         result = load_result(result_filename)
 
     if printresults:
-        # write_response(filestr,Dev)
         fig = plt.prepare_figure(plot_type=3)
         plt.plot_result(result, prefix=save_path, comparison_data=tbt_data_in_file)
         print('Tunes: ')
