@@ -170,15 +170,14 @@ if __name__ == '__main__':
     drift = 'u250'
     save_path = 'delta_output/%s/' % filestr.split('/')[-1]
 
-
-    response, tbt_tunes = import_response(filestr)
-    response.save(save_path + 'response_input.pickle')
-    tbt_data_in_file = {'name': 'TbT', 'tunes': tbt_tunes}
-
     try:
         makedirs(save_path)
     except FileExistsError:
         pass
+
+    response, tbt_tunes = import_response(filestr)
+    response.save(save_path + 'response_input.pickle')
+    tbt_data_in_file = {'name': 'TbT', 'tunes': tbt_tunes}
 
     result_filename = save_path + 'result.pickle'
     if recompute:
