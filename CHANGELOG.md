@@ -1,3 +1,7 @@
+## Version 0.18 ##
+
+* improved optimization layer execution time by about 20% (array ops in _from_statevec, _to_statevec)
+
 ## Version 0.17 ##
 
 * wrapper for DELTA storage ring (standard response files) has been added

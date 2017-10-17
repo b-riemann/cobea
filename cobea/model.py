@@ -12,6 +12,7 @@ from scipy.linalg import svd # eigh
 from warnings import warn
 from pickle import dump
 from time import time
+from numpy.testing import assert_array_almost_equal_nulp
 
 class BasicModel():
     """simple representation of the Bilinear-Exponential model (without topology or optimization attributes).
@@ -44,7 +45,7 @@ class BasicModel():
 
 
     A reduced model class without topology or gradient computation"""
-    def __init__(self, K,J,M, init_fun=empty):
+    def __init__(self, K,J,M, include_dispersion, init_fun=empty):
         self.R_jmw = init_fun((J, M, M), dtype=complex)
         self.A_km = init_fun((K, M), dtype=complex)
         self.d_jw = init_fun((J, M), dtype=float)
@@ -54,74 +55,66 @@ class BasicModel():
         self.K = K
         self.J = J
         self.M = M
+        
+        # offset array for state vector, see _from_statevec
+        # to model parameter conversion
+        self._offsets = cumsum((M, self.A_km.size, self.A_km.size, self.R_jmw.size, self.R_jmw.size,
+                        self.b_k.size, self.d_jw.size))  
 
-    def _opt_unwrap(self, x):
-        """read in all BE model variables from their vector representation.
+        # number of search space dimensions:
+        self.ndim = self.M + 2 * self.A_km.size + 2 * self.R_jmw.size  # D[k,m], R[j,m,d]
+        if include_dispersion:
+            self.ndim += self.K + self.J * self.M  # += K+J*D
+        self.include_dispersion = include_dispersion
+
+
+    def _from_statevec(self, x):
+        """read in all BE model variables from a state vector x.
 
         Parameters
         ----------
         x : array
-            a vector representation of data for :py:data:`mu_m`, :py:data:`R_jmw`, :py:data:`A_km`, :py:data:`d_jw`, and :py:data:`b_k`.
+            a vector representation all model parameters in the (flattened) order
+             (mu_m, Re A_km, Im A_km, Re R_jmw, Im R_jmw, b_k, d_jw)
         """
-        self.mu_m = x[:self.M]  # do not use mod here, as this influences xgrad and thus convergence of l-bfgs
+        self.mu_m = x[:self._offsets[0]]  # do not use mod here, as this influences gradients and thus convergence
+        self.A_km[:].real = x[self._offsets[0]:self._offsets[1]].reshape(self.K, self.M)
+        self.A_km[:].imag = x[self._offsets[1]:self._offsets[2]].reshape(self.K, self.M)
+        self.R_jmw[:].real = x[self._offsets[2]:self._offsets[3]].reshape(self.J, self.M, self.M)
+        self.R_jmw[:].imag = x[self._offsets[3]:self._offsets[4]].reshape(self.J, self.M, self.M)
 
-        # K=(len(x)-M)/(2*M)
-        pos = arange(self.M, 2 * self.M)
-        for k in range(self.K):
-            self.A_km[k].real = x[pos]
-            self.A_km[k].imag = x[pos + self.A_km.size]
-            pos += self.M
-        pos += self.A_km.size
-        for j in range(self.J):
-            for m in range(self.M):
-                self.R_jmw[j, m].real = x[pos]
-                self.R_jmw[j, m].imag = x[pos + self.R_jmw.size]
-                pos += self.M
-        pos += self.R_jmw.size
-        if pos[0] != len(x):  # ..then there is dispersion info
-            self.b_k = x[pos[0]:pos[0] + self.K]
-            pos += self.K
-            for j in range(self.J):
-                self.d_jw[j] = x[pos]
-                pos += self.M
+        if self.include_dispersion:
+            self.b_k[:] = x[self._offsets[4]:self._offsets[5]]
+            self.d_jw[:] = x[self._offsets[5]:self._offsets[6]].reshape(self.J, self.M)
 
-    def _opt_wrap(self):
+    def _to_statevec(self):
         """
-        convert all BE model parameters into the vector representation.
+        convert all BE model parameters into a state vector x.
 
         Returns
         -------
         x : array
-            a vector representation of the data contained in :py:data:`mu_m`, :py:data:`R_jmw`, :py:data:`A_km`, :py:data:`d_jw`, and :py:data:`b_k`.
+            a vector representation all model parameters in the (flattened) order
+             (mu_m, Re A_km, Im A_km, Re R_jmw, Im R_jmw, b_k, d_jw)
         """
-        pos = self.M
-        self._x[:pos] = self.mu_m
-        for k in range(self.K):
-            for m in range(self.M):
-                self._x[pos] = self.A_km[k, m].real
-                self._x[pos + self.A_km.size] = self.A_km[k, m].imag
-                pos += 1
-        pos += self.A_km.size
-        for j in range(self.J):
-            for m in range(self.M):
-                for d in range(self.M):
-                    self._x[pos] = self.R_jmw[j, m, d].real
-                    self._x[pos + self.R_jmw.size] = self.R_jmw[j, m, d].imag
-                    pos += 1
+        x = empty(self._offsets[6 if self.include_dispersion else 4], dtype=float)
+
+        x[:self._offsets[0]] = self.mu_m
+        x[self._offsets[0]:self._offsets[1]] = self.A_km.real.flatten()
+        x[self._offsets[1]:self._offsets[2]] = self.A_km.imag.flatten()
+        x[self._offsets[2]:self._offsets[3]] = self.R_jmw.real.flatten()
+        x[self._offsets[3]:self._offsets[4]] = self.R_jmw.imag.flatten()
+
         if self.include_dispersion:
-            pos += self.R_jmw.size
-            if self.b_k.ndim == 1:  # coupled dispersion
-                self._x[pos:pos + self.b_k.size] = self.b_k.flatten()
-                pos += self.b_k.size
-                for j in range(self.J):
-                    self._x[pos:pos + self.M] = self.d_jw[j]
-                    pos += self.M
-        return self._x
+            x[self._offsets[4]:self._offsets[5]] = self.b_k
+            x[self._offsets[5]:self._offsets[6]] = self.d_jw.flatten()
+
+        return x
 
 
 class ErrorModel(BasicModel):
-    def __init__(self, K,J,M):
-        BasicModel.__init__(self, K, J, M)
+    def __init__(self, K,J,M, include_dispersion):
+        BasicModel.__init__(self, K, J, M, include_dispersion)
         # additional containers for Ripken-Mais errors. In BEModel, the Ripken-Mais
         # expectation values are generated from eigenorbits directly
         self.cbeta_jmw = empty(self.R_jmw.shape,dtype=float)
@@ -147,27 +140,12 @@ class BEModel(BasicModel):
         input topology, represented as :py:class:`Topology` object
     """
     def __init__(self, K, J, M, topology, include_dispersion, init_fun=empty):
-        BasicModel.__init__(self, K, J, M, init_fun)
+        BasicModel.__init__(self, K, J, M, include_dispersion, init_fun)
         self.topology = topology
-
-        # number of search space dimensions:
-        self.ndim = self.M + 2 * self.A_km.size + 2 * self.R_jmw.size  # D[k,m], R[j,m,d]
-        if include_dispersion:
-            self.ndim += self.K + self.J * self.M  # += K+J*D
-        self.include_dispersion = include_dispersion
 
         # pre-allocate worker arrays for optimization
         self._c = empty((M, K, J, M), dtype=complex)
         self._x = empty(self.ndim)
-
-    def _offsets(self):
-        """
-        the offsets array contains offsets for :py:data:`A_km`, :py:data:`R_jmw`, :py:data:`b_k` and :py:data:`d_jw` in that order.
-        """
-        if self.include_dispersion:
-            return cumsum((self.M, 2 * self.A_km.size, 2 * self.R_jmw.size, self.b_k.size, self.d_jw.size))
-        else:
-            return cumsum((self.M, 2 * self.A_km.size, 2 * self.R_jmw.size))
 
 
     def E_jkm(self):
@@ -206,7 +184,8 @@ class BEModel(BasicModel):
         chi^2: float
             the function value
         grad: array
-            a real-valued vector that contains dependent parameters and can be reshaped by :py:func:`Bare_Model.opt_unwrap`
+            a real-valued vector that contains dependent parameters and can be reshaped by
+            :py:func:`Bare_Model._from_statevec`
         """
         xi = -Dev
         E = self.E_jkm()
@@ -284,7 +263,7 @@ class BEModel(BasicModel):
             a real-valued vector that contains gradients for all dependent model parameters
             and can be reshaped by :py:func:`Bare_Model.opt_unwrap`
         """
-        self._opt_unwrap(x)
+        self._from_statevec(x)
         return self._gradient_unwrapped(Dev, opt)
 
     def _jacobian_unwrapped(self):
@@ -298,7 +277,7 @@ class BEModel(BasicModel):
             A list of vector representation offsets computed by :py:func:`offsets`.
         """
 
-        offs = self._offsets()
+        offs = self._offsets[[0,2,4,5,6]]
         jacomat = zeros([offs[-1], self.K * self.J * self.M])
         E_kjm = self.E_kjm()
 
@@ -593,13 +572,12 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.17'
+        self.version = '0.18'
         self.matrix = response.matrix
-        self.include_dispersion = response.include_dispersion
         self.unit = response.unit
         K, J, M = response.matrix.shape
         BEModel.__init__(self, K, J, M, response.topology, response.include_dispersion, **kwargs)
-        self.error = ErrorModel(K, J, M)
+        self.error = ErrorModel(K, J, M, response.include_dispersion)
         self.additional = additional
 
     def update_errors(self):
@@ -652,7 +630,7 @@ class Result(BEModel):
             # rhoTv = u[p,:] #v[p,:]
             xsigmas[p] = sqrt(dot(u[p], u[p])) * sqv
 
-        self.error._opt_unwrap(xsigmas)
+        self.error._from_statevec(xsigmas)
 
         self.additional['err'] = {'chi_kjw': Dev_res, 'chi^2': chisq,
             'variance': vari, 's2n': s2n, 'eigvals': s, 'cutoff': cutoff}
