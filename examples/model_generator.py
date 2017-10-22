@@ -10,6 +10,7 @@ from cobea.pproc import normalize_using_drift
 from pickle import dump, load
 from os import makedirs
 
+
 def random_topology(K, J):
     corr_names = ['cor%i' % k for k in range(K)]
     mon_names = ['bpm%i' % j for j in range(J)]
@@ -107,7 +108,6 @@ def random_response_drift(K, J, M=1, include_dispersion=True, relative_noise=0.0
 
 if __name__ == '__main__':
     from cobea import cobea
-    from cobea.pproc import normalize_using_drift
     import cobea.plotting as plt
 
     hidden_filename = 'hidden_model.pickle'

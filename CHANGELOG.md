@@ -1,3 +1,7 @@
+## Version 0.19 ##
+
+* slightly improved reference_tool, cleaned up formatting and result.additional
+
 ## Version 0.18 ##
 
 * improved optimization layer execution time by about 20% (array ops in _from_statevec, _to_statevec)

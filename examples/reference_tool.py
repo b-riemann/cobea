@@ -6,20 +6,27 @@ Note: Does not work well for M=2 from model_generator yet, but does so for real 
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from os import makedirs
-from model_generator import *
+from model_generator import random_response_drift
 from pickle import load
 from numpy.testing import assert_array_almost_equal_nulp
 
 reference_dict = {'set1': (30,32,1,0.02)} # (K, J, M, relative_noise)
 
 
+def compare_attribute(old_result, new_result, attribute):
+    arr = [getattr(result,attribute) for result in (new_result, old_result)]
+    try:
+        assert_array_almost_equal_nulp(arr[0], arr[1])
+    except AssertionError:
+        raise AssertionError('%s is different: computation %s vs reference %s' % (attribute,
+                                                                                  arr[0].repr(), arr[1].repr))
+
+
 def compare_results(new_result, old_result):
     for attribute in ('R_jmw', 'A_km', 'mu_m', 'd_jw', 'b_k'):
-        arr = [getattr(result,attribute) for result in (new_result, old_result)]
-        # try:
-        assert_array_almost_equal_nulp(arr[0], arr[1])
-        # except AssertionError:
-        #     print('%s is different: computation %s vs reference %s' % (attribute, arr[0].repr(), arr[1].repr))
+        compare_attribute(old_result, new_result, attribute)
+        compare_attribute(old_result.error, new_result.error, attribute)
+
     print('present result is approx. equivalent to reference.')
 
     for key in ('coretime',):
@@ -30,7 +37,6 @@ def compare_results(new_result, old_result):
 
 
 def compare_computation_to_reference(response_filename, result_filename, make_reference=False):
-
     with open(response_filename,'rb') as f:
          response = load(f)
 

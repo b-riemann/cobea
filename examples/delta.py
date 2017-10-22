@@ -1,7 +1,6 @@
 """
 a wrapper to run standard DELTA response matrix files through cobea.
-Note: For this to work, you need to have access to response matrix files of the DELTA storage ring,
-as well as its topology file HK_VK_BPM.Dat
+Note: For this to work, you need to have access to response matrix files of the DELTA storage ring.
 If you are interested in general input/output for another accelerator, check model_generator.py and the manual.
 
 Bernard Riemann (bernard.riemann@tu-dortmund.de)

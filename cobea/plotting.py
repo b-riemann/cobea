@@ -167,18 +167,30 @@ def plot_response(response, w=0, label='deviation', ax=gca()):
 
 def plot_residual(result, w=0, label='residual', ax=gca()):
     """plot fit residual into an axis for a given direction w (0: x, 1: y)"""
-    plot_matrix(result.matrix[:,:,w] - result.response_matrix()[:,:,w], devlbl=label+' / '+result.unit, ax=ax)
+    chi_kjw = result.matrix[:,:,w] - result.response_matrix()[:,:,w]
+    plot_matrix(chi_kjw, devlbl=label+' / '+result.unit, ax=ax)
     matrix_axes(result.topology, ax=ax)
+    return chi_kjw
 
 
 def plot_Dev_err(result, w=0):
-    """create a figure that shows response matrix and residual error for a given direction w (0: x, 1: y)"""
-    fig, ax = subplots(2, 1, sharex=True, sharey=True)
-    change_figsize(fig, 0)
-    plot_response(result, w, ax=ax[0])
-    setp(ax[0].get_xticklabels(), visible=False)
-    plot_residual(result, w, ax=ax[1])
-    return fig
+    """
+    create a figure that shows response matrix and residual error
+    for a given direction w (0: x, 1: y)
+    """
+    mat_fig, mat_ax = subplots(2, 1, sharex=True, sharey=True)
+    change_figsize(mat_fig, 0)
+    plot_response(result, w, ax=mat_ax[0])
+    setp(mat_ax[0].get_xticklabels(), visible=False)
+    chi_kjw = plot_residual(result, w, ax=mat_ax[1])
+
+    hist_fig, hist_ax = subplots()
+    change_figsize(hist_fig, 2)
+    hist_ax.hist(chi_kjw.flatten(), 40)
+    hist_ax.set_xlabel('deviations / ' + result.unit)
+    hist_ax.set_ylabel('counts')
+
+    return mat_fig, hist_fig
 
 
 def _plot_Re(ax, val, err, label='', color=Re_clr, xval=[]):
@@ -480,7 +492,7 @@ def plot_result(result, print_figures=True, prefix='', comparison_data={}, direc
         which plots are to be created. Each character represents a different result plot:
         'm': monitor_results -> monitor_m*.pdf
         'c': corrector_results -> corrector_m*.pdf
-        'd': plot_Dev_err, hist -> Dev_err_w*.pdf, hist_w*.pdf
+        'd': plot_Dev_err -> Dev_err_w*.pdf, hist_w*.pdf
         't': plot_topology -> topology.pdf
         'v': convergence information -> convergence.pdf. Only works if convergence information is available.
     """
@@ -498,15 +510,10 @@ def plot_result(result, print_figures=True, prefix='', comparison_data={}, direc
             printshow(print_figures, prefix + 'corrector_m%i.pdf' % m, fig)
 
     if 'd' in plot_flags:
-        erm = result.additional['err']
         for w in range(result.M):
-            fig = plot_Dev_err(result, w)
-            printshow(print_figures, prefix + 'Dev_err_w%i.pdf' % w, fig)
-
-            fig = prepare_figure(2)
-            hist(erm['chi_kjw'][:, :, w].flatten(), 40)
-            xlabel('deviations / ' + result.unit)
-            printshow(print_figures, prefix + 'hist_w%i.pdf' % w, fig)
+            mat_fig, hist_fig = plot_Dev_err(result, w)
+            printshow(print_figures, prefix + 'Dev_err_w%i.pdf' % w, mat_fig)
+            printshow(print_figures, prefix + 'hist_w%i.pdf' % w, hist_fig)
 
     if 't' in plot_flags:
         fig = plot_topology(result.topology)

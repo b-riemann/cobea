@@ -4,8 +4,9 @@ Small postprocessing and helper functions for COBEA results.
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 
-from numpy import conj, empty, zeros, eye, dot, sign, asarray
+from numpy import asarray, conj, dot, empty, eye, sign, sum, zeros
 from .mcs import find_indices
+
 
 def symplectic_form(D=2):
     """
@@ -117,9 +118,9 @@ def normalize_using_drift(model, di, drift_length):
 
 
 def guess_mu_sign(rslt):
-    """for weakly coupled setups,
-    guess the sign of mu (quadrant)
-    based on monitor phase advance"""
+    """
+    for weakly coupled setups, guess the sign of mu (quadrant) based on monitor phase advance
+    """
     x = sign(rslt.delphi_jmw)
     for m in range(rslt.M):
         if sum(x[:,m,m]) < 0:
@@ -214,7 +215,7 @@ def layer(result, drift_space=None, convergence_info=False):
         result.additional['conv'] = l_bfgs_iterate()
 
     try:  # assume that drift_space information was given
-        di = find_indices(drift_space[:2],result.topology.mon_names)
+        di = find_indices(drift_space[:2], result.topology.mon_names)
         print(("PPr> normalizing using drift\n"
                "       %s -- %s with length ~ %.4f m.") % tuple(drift_space))
         normalize_using_drift(result, di, drift_space[2])

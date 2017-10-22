@@ -5,14 +5,12 @@ optimization procedures in :py:class:`BE_Model`.
 
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
-from numpy import abs, angle, arange, argsort, asarray, cumsum, diag, \
-    dot, einsum, empty, exp, NaN, real, pi, \
-    ravel_multi_index, sqrt, sum, zeros, min, max
+from numpy import abs, angle, argsort, asarray, cumsum, diag, dot, einsum, \
+    empty, exp, real, pi, ravel_multi_index, sqrt, sum, zeros
 from scipy.linalg import svd # eigh
 from warnings import warn
 from pickle import dump
-from time import time
-from numpy.testing import assert_array_almost_equal_nulp
+
 
 class BasicModel():
     """simple representation of the Bilinear-Exponential model (without topology or optimization attributes).
@@ -20,7 +18,8 @@ class BasicModel():
     Parameters
     ----------
     K,J,M : int
-        dimensions of the model, with K being the number of correctors, J being the number of monitors, and M the number of modes respectively directions.
+        dimensions of the model, with K being the number of correctors, J being the number of monitors,
+        and M the number of modes respectively directions.
     init_fun : function
         a (possibly self-defined) initialization function like :py:func:`zeros` or :py:func:`empty` from numpy.
 
@@ -62,9 +61,7 @@ class BasicModel():
                         self.b_k.size, self.d_jw.size))  
 
         # number of search space dimensions:
-        self.ndim = self.M + 2 * self.A_km.size + 2 * self.R_jmw.size  # D[k,m], R[j,m,d]
-        if include_dispersion:
-            self.ndim += self.K + self.J * self.M  # += K+J*D
+        self.ndim = self._offsets[6 if include_dispersion else 4]
         self.include_dispersion = include_dispersion
 
 
@@ -97,7 +94,7 @@ class BasicModel():
             a vector representation all model parameters in the (flattened) order
              (mu_m, Re A_km, Im A_km, Re R_jmw, Im R_jmw, b_k, d_jw)
         """
-        x = empty(self._offsets[6 if self.include_dispersion else 4], dtype=float)
+        x = empty(self.ndim, dtype=float)
 
         x[:self._offsets[0]] = self.mu_m
         x[self._offsets[0]:self._offsets[1]] = self.A_km.real.flatten()
@@ -113,7 +110,7 @@ class BasicModel():
 
 
 class ErrorModel(BasicModel):
-    def __init__(self, K,J,M, include_dispersion):
+    def __init__(self, K, J, M, include_dispersion):
         BasicModel.__init__(self, K, J, M, include_dispersion)
         # additional containers for Ripken-Mais errors. In BEModel, the Ripken-Mais
         # expectation values are generated from eigenorbits directly
@@ -176,8 +173,7 @@ class BEModel(BasicModel):
             a number to select what will be computed.
                 =0: only function value (gradient vector is empty)
                 =1: function value, mu gradient
-                =2: f.val., gradient without dispersion (no b_k and d_jw components)
-                (=3: f.val, full gradient with dispersion.)
+                =2: f.val. and gradient (with or without dispersion depending on self.include_dispersion)
 
         Returns
         -------
@@ -243,17 +239,15 @@ class BEModel(BasicModel):
         Parameters
         ----------
         x : array
-            a vector representation of data for :py:data:`mu_m`, :py:data:`R_jmw`, :py:data:`A_km`, :py:data:`d_jw`, and :py:data:`b_k`.
+            a vector representation of data for :py:data:`mu_m`, :py:data:`R_jmw`, :py:data:`A_km`,
+            :py:data:`d_jw`, and :py:data:`b_k`.
         Dev : array
             a general response matrix in format[k,j,w]
         opt: int
             a number to select what will be computed.
-
                 =0: only function value (gradient vector is empty)
-
                 =1: function value, mu gradient
-
-                =2: f.val., gradient with/without dispersion (b_k and d_jw components) depending on self.include_dispersion
+                =2: f.val. and gradient (with or without dispersion depending on self.include_dispersion)
 
         Returns
         -------
@@ -273,8 +267,6 @@ class BEModel(BasicModel):
         -------
         jacomat : array
             Full Jacobian matrix for the vector representation of the BE model.
-        offs : array
-            A list of vector representation offsets computed by :py:func:`offsets`.
         """
 
         offs = self._offsets[[0,2,4,5,6]]
@@ -339,7 +331,7 @@ class BEModel(BasicModel):
                         jacomat[pos, idx] = self.b_k[k]
                     # grad[pos] = 2*sum( xi[:,j,d] * self.b_k )
                     pos += 1
-        return jacomat, offs
+        return jacomat
 
     def response_matrix(self):
         """
@@ -504,8 +496,7 @@ class Response():
         re-ordered input response matrix.
 
     """
-    def __init__(self, matrix, corr_names, mon_names, line,
-                 include_dispersion=True, unit=''):
+    def __init__(self, matrix, corr_names, mon_names, line, include_dispersion=True, unit=''):
         self.matrix = asarray(matrix)
         if matrix.shape[0] != len(corr_names):
             raise Exception('list of corr_names != number of correctors')
@@ -524,7 +515,7 @@ class Response():
     def pop_monitor(self,monitor_name):
         monitor_mask = self.topology.mon_names != monitor_name
         self.topology.mon_names = self.topology.mon_names[monitor_mask]
-        self.topology.S_jk = self.topology.S_jk[monitor_mask,:]
+        self.topology.S_jk = self.topology.S_jk[monitor_mask, :]
         self.topology.argsort_j = self.topology.argsort_j[monitor_mask]
 
         self.matrix = self.matrix[:, monitor_mask]
@@ -572,7 +563,7 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.18'
+        self.version = '0.19'
         self.matrix = response.matrix
         self.unit = response.unit
         K, J, M = response.matrix.shape
@@ -582,15 +573,16 @@ class Result(BEModel):
 
     def update_errors(self):
         """
-        compute errors in attribute :py:data:`error` for given BE-Model parameters and input response, including errors for Ripken-Mais parameters
+        compute errors in attribute :py:data:`error` for given BE-Model parameters and input response,
+        including errors for Ripken-Mais parameters
         """
-        # Note: this function contains out-commented code for an alternative to SVD usage (eigh).
+        # Note: this method contains out-commented code for an alternative to SVD usage (eigh).
         # the eigh values are sorted in increasing order, while svd is in decreasing order.
 
         # preparations for Hessian error estimation (H approx J J.T)
-        jacomat, offs = self._jacobian_unwrapped()
+        jacomat = self._jacobian_unwrapped()
         u, s, vh = svd(jacomat, full_matrices=False)
-        #w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)
+        # w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)
         del jacomat
 
         # we cut off the smallest values according to the remaining number of scaling invariants.
@@ -599,8 +591,8 @@ class Result(BEModel):
 
         s[:-cutoff] = 1 / s[:-cutoff]
         s[-cutoff:] = 0
-        #w[:cutoff] = 0
-        #w[cutoff:] = 1/sqrt(w[cutoff:])
+        # w[:cutoff] = 0
+        # w[cutoff:] = 1/sqrt(w[cutoff:])
 
         u = dot(u, diag(s))
         # v = dot(v,diag(w))
@@ -610,15 +602,14 @@ class Result(BEModel):
         # sigma_rho^2 = A.T v v.T A = A.T u u.T A
 
         # compute variance and related quantities
-        Dev_res = self.matrix - self.response_matrix()
-        chisq = sum(Dev_res**2)
+        chisq = sum((self.matrix - self.response_matrix())**2)
         # effective degrees of freedom D-D_inv, BE+d model
         dof = 2 * (self.A_km.size + self.R_jmw.size) + self.K + self.J * self.M - self.M - 1
         # variance formula (``Error computations and approximate Hessian'')
         vari = chisq * self.matrix.size / (self.matrix.size - dof)
 
         rmsin = sum(self.matrix**2)
-        print('     input response RMS: %.3e %s' % (sqrt(rmsin / self.matrix.size),self.unit))
+        print('     input response RMS: %.3e %s' % (sqrt(rmsin / self.matrix.size), self.unit))
         s2n = sqrt(rmsin / chisq)
         print('     Expl. funct. ratio (EVR): %.3f' % s2n)
 
@@ -632,13 +623,11 @@ class Result(BEModel):
 
         self.error._from_statevec(xsigmas)
 
-        self.additional['err'] = {'chi_kjw': Dev_res, 'chi^2': chisq,
-            'variance': vari, 's2n': s2n, 'eigvals': s, 'cutoff': cutoff}
-
+        self.additional['err'] = {'chi^2': chisq, 'variance': vari, 's2n': s2n, 'eigvals': s, 'cutoff': cutoff}
         del xsigmas
 
-        Re_idx = offs[1]  # index of Re(R_jmw)
-        Im_idx = Re_idx + self.R_jmw.size
+        Re_idx = self._offsets[2]  # index of Re(R_jmw)
+        Im_idx = self._offsets[3]
         for j in range(self.J):
             for m in range(self.M):
                 for w in range(self.M):
@@ -661,8 +650,6 @@ class Result(BEModel):
         for j in range(1, self.J):
             self.error.delphi_jmw[j-1] = sqrt(self.error.phi_jmw[j]**2 + self.error.phi_jmw[j - 1]**2)
 
-        #print("error check 3: %e" % sum(self.additional['err']['chi^2']))
-
     def save(self,filename):
         """
         save the Result object as a pickle file with the given filename.
@@ -675,8 +662,10 @@ class Result(BEModel):
 
     def __str__(self):
         s = '--global summary--\n'
-        s += '  %i monitors * %i correctors * %i directions\n  = %i response elements\n' % (self.J, self.K, self.M, self.matrix.size)
+        s += '  %i monitors * %i correctors * %i directions\n  = %i response elements\n' % (self.J, self.K, self.M,
+                                                                                            self.matrix.size)
         for m in range(self.M):
-            s += "  Q_{mode} = {tune:.4f} +- {error:.4f}\n".format(mode=m,tune=self.tune(m),error=self.error.mu_m[m]/(2*pi))
+            s += "  Q_{mode} = {tune:.4f} +- {error:.4f}\n".format(mode=m, tune=self.tune(m),
+                                                                   error=self.error.mu_m[m]/(2*pi))
         s += '  chi^2 = %.3e' % self.additional['err']['chi^2']
         return s

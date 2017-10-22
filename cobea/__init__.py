@@ -10,8 +10,6 @@ accelerators by closed-orbit information.
 
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
-from numpy import asarray, sum, empty, sign, sqrt, NaN
-
 from time import time  # for benchmarks
 from pickle import load
 
@@ -65,9 +63,6 @@ def optimization_layer(result, iprint=-1):
     return result
 
 
-
-
-
 def cobea(response, drift_space=None, convergence_info=False):
     """
     Main COBEA function with pre- and postprocessing.
@@ -86,8 +81,7 @@ def cobea(response, drift_space=None, convergence_info=False):
     result : object
         A :py:class:`cobea.model.Result` object.
     """
-
-    # for benchmarking purposes, time for core computations is measured,
+    # for benchmarking purposes, time for core computations is measured:
     coretime = -time() # start measuring ('tic')
 
     # run the start value layer, return result object:
@@ -100,7 +94,9 @@ def cobea(response, drift_space=None, convergence_info=False):
     print('elapsed time (MCS+Opt): %.2f s' % coretime)
     result.additional['coretime'] = coretime
 
+    # run postprocessing layer, result is modified:
     pproc_layer(result, drift_space, convergence_info)
+
     print(result)
     return result
 
