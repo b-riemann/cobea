@@ -1,6 +1,14 @@
+## Version 0.20 ##
+
+* filter for corrector sets in [Topology](cobea/model.py) and Response class.
+* Some plotting outputs have been modified accordingly.
+* modified Result summary and error attributes.
+* error handling in [Response](cobea/model.py) for missing corr_names in line.
+
 ## Version 0.19 ##
 
-* slightly improved reference_tool, cleaned up formatting and result.additional
+* slightly improved reference_tool
+* cleaned up formatting and result.additional
 
 ## Version 0.18 ##
 

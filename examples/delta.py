@@ -98,7 +98,8 @@ def import_response(filename, normalized=True, remove_monitors=('BPM12',), line_
     orb = _reorder(orb_one, orb_two, corr_names)
     r_kjw = nanmean(orb, axis=0)
     response = Response(r_kjw, corr_names, ['BPM%02i' % j for j in bpms],
-                        read_elemnames(line_file), include_dispersion=True, unit='m/rad')
+                        read_elemnames(line_file), include_dispersion=True, unit='m/rad',
+                        corr_filters=('HK*', 'VK*'))
     for monitor in remove_monitors:
         response.pop_monitor(monitor)
     return response, pulser_tunes

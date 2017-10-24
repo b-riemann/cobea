@@ -146,43 +146,49 @@ def plot_matrix(Devdr, devlbl, cmap=('PRGn','Greens'), ax=gca()):
     cb.set_label(devlbl)
 
 
-def matrix_axes(topology, ax=gca()):
-    corrector_label(topology.corr_names, ax=ax)
+def matrix_axes(topology, ax=gca(), corr_filter=None):
+    if corr_filter is None:
+        k_mask = ones(len(topology.corr_names), dtype=bool)
+    else:
+        k_mask = topology.corr_masks[corr_filter]
+    corrector_label(topology.corr_names[k_mask], ax=ax)
     monitor_label(topology.mon_names, ax=ax)
+    return k_mask
 
 
 def plot_topology(topology):
     """create a figure that shows the accelerator topology. Input: Topology object"""
     fig, ax = subplots()
     plot_matrix((topology.S_jk > 0).T, devlbl=r'$S_{kj}$ > 0', ax=ax)
-    matrix_axes(topology, ax=ax)
+    matrix_axes(topology, ax=ax, corr_filter=None)
     return fig
 
 
-def plot_response(response, w=0, label='deviation', ax=gca()):
+def plot_response(response, w=0, label='deviation', ax=gca(), corr_filter='all'):
     """Plot response matrix into an axis for a given direction w (0: x, 1: y)"""
-    plot_matrix(response.matrix[:,:,w], devlbl=label+' / '+response.unit, ax=ax)
-    matrix_axes(response.topology, ax=ax)
+    k_mask = matrix_axes(response.topology, ax=ax, corr_filter=corr_filter)
+    plot_matrix(response.matrix[k_mask, :, w], devlbl=label+' / '+response.unit, ax=ax)
 
 
-def plot_residual(result, w=0, label='residual', ax=gca()):
+def plot_residual(result, w=0, label='residual', ax=gca(), corr_filter='all'):
     """plot fit residual into an axis for a given direction w (0: x, 1: y)"""
-    chi_kjw = result.matrix[:,:,w] - result.response_matrix()[:,:,w]
-    plot_matrix(chi_kjw, devlbl=label+' / '+result.unit, ax=ax)
-    matrix_axes(result.topology, ax=ax)
+    k_mask = matrix_axes(result.topology, ax=ax, corr_filter=corr_filter)
+    chi_kjw = result.matrix[k_mask, :, w] - result.response_matrix()[k_mask, :, w]
+    plot_matrix(chi_kjw, devlbl=label+' / ' + result.unit, ax=ax)
     return chi_kjw
 
 
-def plot_Dev_err(result, w=0):
+def plot_Dev_err(result, w=0, corr_filter='all'):
     """
     create a figure that shows response matrix and residual error
     for a given direction w (0: x, 1: y)
     """
+
     mat_fig, mat_ax = subplots(2, 1, sharex=True, sharey=True)
     change_figsize(mat_fig, 0)
-    plot_response(result, w, ax=mat_ax[0])
+    plot_response(result, w, ax=mat_ax[0], corr_filter=corr_filter)
     setp(mat_ax[0].get_xticklabels(), visible=False)
-    chi_kjw = plot_residual(result, w, ax=mat_ax[1])
+    chi_kjw = plot_residual(result, w, ax=mat_ax[1], corr_filter=corr_filter)
 
     hist_fig, hist_ax = subplots()
     change_figsize(hist_fig, 2)
@@ -400,71 +406,74 @@ def monitor_results(result, m=0, w=None, comparison_data={}, direction='xy'):
 ## corrector quantities
 
 
-def A_km(result, m, ax=gca()):
+def A_km(result, m, ax=gca(), filter='all'):
     """plot real and imaginary parts of corrector parameters (incl. errors) into an axis for a given mode m"""
-    _plot_ReIm(ax, result.A_km[:, m], result.error.A_km[:, m])
+    k_mask = result.topology.corr_masks[filter]
+    _plot_ReIm(ax, result.A_km[k_mask, m], result.error.A_km[k_mask, m])
     ax.set_ylabel('$A_{km}$ / a.u.')
 
 
-def cbeta_km(result, m, comparison_data={}, ax=gca()):
+def cbeta_km(result, m, comparison_data={}, ax=gca(), filter='all'):
     """
     plot const*beta at correctors assuming
     decoupled optics and thin correctors
     ToDo: errors for this quantity
     """
-    _plot_Re(ax, result.cbeta_km[:, m], 0, label='cobea')
+    k_mask = result.topology.corr_masks[filter]
+    _plot_Re(ax, result.cbeta_km[k_mask, m], 0, label='cobea')
     if 'beta_km' in comparison_data:
         cm = comp_minimal(comparison_data)
-        ax.plot(cm['beta_km'][:,m], marker='.',
+        ax.plot(cm['beta_km'][k_mask, m], marker='.',
                 color=modelc, label=cm['name'])
         ax.legend()
     ax.set_ylabel(r'$|A_{km}| \approx $ const $\beta_km$ / a.u.')
 
 
-def delphi_km(result, m, comparison_data={}, ax=gca()):
-    bpmk = arange(result.K - 1) + 0.5
-    _plot_Re(ax, result.delphi_km[:, m], 0, xval=bpmk, label='cobea')
-    if 'delphi_km' in comparison_data:
-        cm = comp_minimal(comparison_data)
-        ax.plot(bpmk, cm['delphi_km'][:,m], marker='.',
-                color=modelc, label=cm['name'])
-        ax.legend()
-    ax.set_ylabel('$\Delta$ arg($A_{km}$) / deg')
+#def delphi_km(result, m, comparison_data={}, ax=gca(), filter=''):
+#    bpmk = arange(result.K - 1) + 0.5
+#    _plot_Re(ax, result.delphi_km[:, m], 0, xval=bpmk, label='cobea')
+#    if 'delphi_km' in comparison_data:
+#        cm = comp_minimal(comparison_data)
+#        ax.plot(bpmk, cm['delphi_km'][:,m], marker='.',
+#                color=modelc, label=cm['name'])
+#        ax.legend()
+#    ax.set_ylabel('$\Delta$ arg($A_{km}$) / deg')
 
 
-def b_k(result, w=0, comparison_data={}, direction='xy', ax=gca()):
+def b_k(result, w=0, comparison_data={}, direction='xy', ax=gca(), filter='all'):
+    k_mask = result.topology.corr_masks[filter]
     cm = comp_minimal(comparison_data)
     if result.b_k.ndim > 1:
         for w in range(result.b_k.shape[1]):
-            _plot_Re(ax, result.b_k[:,w], result.error.b_k[:,w], label='cobea '+direction[w])
+            _plot_Re(ax, result.b_k[k_mask, w], result.error.b_k[k_mask, w], label='cobea '+direction[w])
             if 'b_k' in cm:
-                ax.plot(cm['b_k'][:,w], marker='.', color=modelc, label=cm['name']+' '+direction[w])
+                ax.plot(cm['b_k'][k_mask, w], marker='.', color=modelc, label=cm['name']+' '+direction[w])
                 ax.legend()
         ax.set_ylabel(r'$b_{kw}$ / a.u.')
     else:
-        _plot_Re(ax, result.b_k, result.error.b_k, label='cobea')
+        _plot_Re(ax, result.b_k[k_mask], result.error.b_k[k_mask], label='cobea')
         if 'b_k' in cm:
-            ax.plot(cm['b_k'], marker='.', color=modelc, label=cm['name'])
+            ax.plot(cm['b_k'][k_mask], marker='.', color=modelc, label=cm['name'])
             ax.legend()
         ax.set_ylabel(r'$b_k$ / a.u.')
     _draw_zero(ax)
 
 
-def corrector_results(result, m=0, comparison_data={}, direction='xy'):
+def corrector_results(result, m=0, comparison_data={}, direction='xy', filter='all'):
     """create a figure with corrector results for a given mode m"""
     fig, ax = _xstrlabel_subplots(4 if result.include_dispersion else 3, result.K)
 
-    A_km(result, m, ax=ax[0])
-    #ax[0].legend(ncol=2)
+    A_km(result, m, ax=ax[0], filter=filter)
+    # ax[0].legend(ncol=2)
 
-    cbeta_km(result, m, comparison_data, ax=ax[1])
+    cbeta_km(result, m, comparison_data, ax=ax[1], filter=filter)
 
-    delphi_km(result, m, comparison_data, ax=ax[2])
+    # delphi_km(result, m, comparison_data, ax=ax[2], filter=filter)
 
     if result.include_dispersion:
-        b_k(result, m, comparison_data, direction, ax=ax[3])
+        b_k(result, m, comparison_data, direction, ax=ax[3], filter=filter)
 
-    corrector_label(result.topology.corr_names, dir='x', ax=ax[-1])
+    corrector_label(result.topology.corr_names[result.topology.corr_masks[filter]], dir='x', ax=ax[-1])
     return fig
 
 
@@ -502,18 +511,21 @@ def plot_result(result, print_figures=True, prefix='', comparison_data={}, direc
         for m in range(result.M):
             for w in range(result.M):
                 fig = monitor_results(result, m, w, comparison_data, direction)
-                printshow(print_figures, '%smonitor_m%i%c.pdf' % (prefix,m,direction[w]), fig)
+                printshow(print_figures, prefix + 'monitor_m%i_%s.pdf' % (m, direction[w]), fig)
 
     if 'c' in plot_flags:
         for m in range(result.M):
-            fig = corrector_results(result, m, comparison_data, direction)
-            printshow(print_figures, prefix + 'corrector_m%i.pdf' % m, fig)
+            for filter in result.topology.corr_masks:
+                fig = corrector_results(result, m, comparison_data, direction, filter)
+                printshow(print_figures, prefix + 'corrector_m%i_%s.pdf' % (m, filter.replace('*', '')), fig)
 
     if 'd' in plot_flags:
         for w in range(result.M):
-            mat_fig, hist_fig = plot_Dev_err(result, w)
-            printshow(print_figures, prefix + 'Dev_err_w%i.pdf' % w, mat_fig)
-            printshow(print_figures, prefix + 'hist_w%i.pdf' % w, hist_fig)
+            for filter in result.topology.corr_masks:
+                mat_fig, hist_fig = plot_Dev_err(result, w, corr_filter=filter)
+                filter_str = filter.replace('*', '')
+                printshow(print_figures, prefix + 'Dev_err_%s_%s.pdf' % (direction[w], filter_str), mat_fig)
+                printshow(print_figures, prefix + 'hist_%s_%s.pdf' % (direction[w], filter_str), hist_fig)
 
     if 't' in plot_flags:
         fig = plot_topology(result.topology)
