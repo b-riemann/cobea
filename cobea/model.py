@@ -695,7 +695,7 @@ class Result(BEModel):
 
     def __str__(self):
         s = '-------- cobea result summary --------\nparameter numbers:\n'
-        s += '  K = %i correctors, J = %i monitors, M = %i directions\n' % (self.J, self.K, self.M)
+        s += '  K = %i correctors, J = %i monitors, M = %i directions\n' % (self.K, self.J, self.M)
         s += '  JKM = %i response elements\n  (JM+K)*' % self.matrix.size
         s += '(2M+1)' if self.include_dispersion else '2M'
         s += '+M = %i model parameters\n' % self.ndim
