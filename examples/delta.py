@@ -90,7 +90,8 @@ def _reorder(orb_one, orb_two, corrnames):
     return Orb
 
 
-def import_response(filename, normalized=True, remove_monitors=('BPM12',), line_file='delta_input/line.text'):
+def import_response(filename, normalized=True, remove_monitors=('BPM12',),
+                    line_file='delta_input/line.text', drift='u250'):
     """
     Convert a DELTA response file into a cobea Result object.
     """
@@ -98,8 +99,9 @@ def import_response(filename, normalized=True, remove_monitors=('BPM12',), line_
     orb = _reorder(orb_one, orb_two, corr_names)
     r_kjw = nanmean(orb, axis=0)
     response = Response(r_kjw, corr_names, ['BPM%02i' % j for j in bpms],
-                        read_elemnames(line_file), include_dispersion=True, unit='m/rad',
-                        corr_filters=('HK*', 'VK*'))
+                        read_elemnames(line_file), unit='(m/rad)',
+                        corr_filters=('HK*', 'VK*'), drift_space=drift_info(drift),
+                        include_dispersion=True)
     for monitor in remove_monitors:
         response.pop_monitor(monitor)
     return response, pulser_tunes
@@ -166,8 +168,6 @@ if __name__ == '__main__':
     else:
         filestr = 'delta_input/response.100708-1'
 
-    machine = 'delta'
-    drift = 'u250'
     save_path = 'delta_output/%s/' % filestr.split('/')[-1]
 
     try:
@@ -182,7 +182,6 @@ if __name__ == '__main__':
     result_filename = save_path + 'result.pickle'
     if recompute:
         result = cobea(response,
-                       drift_space=drift_info(drift),
                        convergence_info=record_convergence)
         result.save(result_filename)
     else:

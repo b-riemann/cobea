@@ -517,7 +517,11 @@ class Response():
     include_dispersion : bool
         whether to use a model with or without dispersion for fitting. default: True
     unit : str
-        unit for the input values of the matrix (optional)
+        (optional, default: '')
+        unit for the input values of the matrix
+    drift_space : iterable
+        (optional, default: None)
+        a tuple or list with 3 elements (monitor name 1, monitor name 2, drift space length / m)
     corr_filters : list
         a list of filter strings with special character *. Example: To create
         one corrector set for all correctors with names starting with Cx, and another
@@ -532,7 +536,8 @@ class Response():
         re-ordered input response matrix.
 
     """
-    def __init__(self, matrix, corr_names, mon_names, line, include_dispersion=True, unit='', corr_filters=()):
+    def __init__(self, matrix, corr_names, mon_names, line, include_dispersion=True, unit='',
+                 drift_space=None, corr_filters=()):
         self.matrix = asarray(matrix)
         if matrix.shape[0] != len(corr_names):
             raise Exception('list of corr_names != number of correctors')
@@ -547,6 +552,7 @@ class Response():
         self.matrix = self.matrix[:, self.topology.argsort_j, :]
         self.include_dispersion = include_dispersion
         self.unit = unit
+        self.drift_space = drift_space
 
     def pop_monitor(self,monitor_name):
         monitor_mask = self.topology.mon_names != monitor_name
@@ -600,6 +606,7 @@ class Result(BEModel):
         self.version = '0.20'
         self.matrix = response.matrix
         self.unit = response.unit
+        self.drift_space = response.drift_space
         K, J, M = response.matrix.shape
         BEModel.__init__(self, K, J, M, response.topology, response.include_dispersion, **kwargs)
         self.error = ErrorModel(K, J, M, response.include_dispersion)
@@ -610,6 +617,8 @@ class Result(BEModel):
         compute errors in attribute :py:data:`error` for given BE-Model parameters and input response,
         including errors for Ripken-Mais parameters
         """
+        if not self.include_dispersion:
+            warn('there is a bug in error computation for include_dispersion=False, which will be corrected in the next release.')
         # Note: this method contains out-commented code for an alternative to SVD usage (eigh).
         # the eigh values are sorted in increasing order, while svd is in decreasing order.
 

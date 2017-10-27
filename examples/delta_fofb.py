@@ -28,7 +28,8 @@ def import_response(filename='20_10_2017/fofb_rpm.txt'):
     response_matrix[:,:,1] = rsp_mat_raw[channel, J:]
 
     response = Response(response_matrix, corr_labels, ['BPM%02i' % j for j in range(1, 55)],
-                        read_elemnames(input_prefix+'line.text'), corr_filters=('shk*', 'svk*'))
+                        read_elemnames(input_prefix+'line.text'), unit='(mm/A)',
+                        corr_filters=('shk*', 'svk*'), drift_space=drift_info('u250'))
     response.pop_monitor('BPM12')
     return response
 

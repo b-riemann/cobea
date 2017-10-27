@@ -544,8 +544,26 @@ def plot_result(result, print_figures=True, prefix='', comparison_data={}, direc
         ax.set_xlim((0, result.additional['conv']['it'][-1]))
         printshow(print_figures, prefix + 'convergence.pdf', fig)
 
-    #for part in range(2):
-    #    subplot(1, 2, part + 1)
-    #    bar(range(result.additional['pca_singvals'][part].shape[0]),
-    #        result.additional['pca_singvals'][part])
-    #printshow(printfigs, prefix + 'PCA_singvals.pdf')
+    # if 's' in plot_flags and result.drift_space is not None:
+        # def beta_interp(s_pos, beta, alfa, sint):
+        #     # find unique s values first
+        #     msk = ones(s_pos.shape[0], dtype=bool)
+        #     msk[1:] = diff(s_pos) != 0
+        #     xi = s_pos[msk]
+        #     outvals = empty((2, len(sint)), dtype=beta.dtype)
+
+        #     yi = empty((xi.shape[0], 2), dtype=beta.dtype)
+        #     for n in range(2):
+        #         yi[:, 0] = beta[n, msk]
+        #         yi[:, 1] = -2 * alfa[n, msk]
+        #         bp = BPoly.from_derivatives(xi, yi, orders=3)
+        #         outvals[n] = bp(sint)
+        #     return outvals
+
+        # di = find_indices(result.drift_space[:2], result.topology.mon_names)
+        # sint = arange(0,256.0)/256 * drift_space[2]
+        # for m in range(result.M):
+        #     beta = [result.beta_jmw[j,m,m] for j in di]
+        #     Rpc = (result.R_jmw[di[1],m,m] - result.R_jmw[di[0],m,m]).conj() / result.drift_space[2]
+        #     alfa = [-(result.R_jmw[j,m,m] * Rpc).real for j in di]
+        #    out

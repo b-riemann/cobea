@@ -1,3 +1,8 @@
+### Version 0.20a ###
+
+* drift space information is now included in the Response input object
+* A bug in error computation has been discovered for include_dispersion=False, it will be corrected in the next release.
+
 ## Version 0.20 ##
 
 * filter for corrector sets in [Topology](cobea/model.py) and Response class.

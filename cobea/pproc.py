@@ -197,7 +197,7 @@ def l_bfgs_iterate(alloc_items=10000):
         'f': farr[3, :num]}
 
 
-def layer(result, drift_space=None, convergence_info=False):
+def layer(result, convergence_info=False):
     """
     Postprocessing layer
 
@@ -205,8 +205,6 @@ def layer(result, drift_space=None, convergence_info=False):
     ----------
     result : object
         A :py:class:`cobea.model.Result` object. The object is modified during processing.
-    drift_space : iterable
-        if not None, a tuple or list with 3 elements (monitor name 1, monitor name 2, drift space length / m)
     convergence_info : bool
         if True, convergence information from L-BFGS is added to the result dictionary (before saving).
     """
@@ -215,10 +213,10 @@ def layer(result, drift_space=None, convergence_info=False):
         result.additional['conv'] = l_bfgs_iterate()
 
     try:  # assume that drift_space information was given
-        di = find_indices(drift_space[:2], result.topology.mon_names)
+        di = find_indices(result.drift_space[:2], result.topology.mon_names)
         print(("PPr> normalizing using drift\n"
-               "       %s -- %s with length ~ %.4f m.") % tuple(drift_space))
-        normalize_using_drift(result, di, drift_space[2])
+               "       %s -- %s with length ~ %.4f m.") % tuple(result.drift_space))
+        normalize_using_drift(result, di, result.drift_space[2])
         print("       invariants: %s" % result.additional['invariants'])
     except TypeError: # drift_space is None
         print('PPr> no drift space given, guessing tune quadrant by phase advance sign')

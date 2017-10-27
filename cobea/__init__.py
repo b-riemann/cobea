@@ -63,7 +63,7 @@ def optimization_layer(result, iprint=-1):
     return result
 
 
-def cobea(response, drift_space=None, convergence_info=False):
+def cobea(response, convergence_info=False):
     """
     Main COBEA function with pre- and postprocessing.
 
@@ -71,8 +71,7 @@ def cobea(response, drift_space=None, convergence_info=False):
     ----------
     response :  object
         A valid :py:class:`cobea.model.Response` object representing the input.
-    drift_space : iterable
-        if not None, a tuple or list with 3 elements (monitor name 1, monitor name 2, drift space length / m)
+
     convergence_info : bool
         if True, convergence information from L-BFGS is added to the result dictionary (before saving).
 
@@ -95,7 +94,7 @@ def cobea(response, drift_space=None, convergence_info=False):
     result.additional['coretime'] = coretime
 
     # run postprocessing layer, result is modified:
-    pproc_layer(result, drift_space, convergence_info)
+    pproc_layer(result, convergence_info)
 
     print(result)
     return result
