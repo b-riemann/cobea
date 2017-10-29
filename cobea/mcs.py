@@ -4,42 +4,12 @@ Monitor-Corrector Subset (MCS) algorithm submodule
 MCS can be used as start-value layer of COBEA.
 """
 
-from numpy import arange, angle, conj, reshape, empty, dot, asarray, exp, sign, sqrt, NaN, \
-    nanargmin, isnan, mod, nonzero, sum, abs
+from numpy import arange, angle, reshape, empty, dot, asarray, exp, sign, sqrt, NaN, \
+    nanargmin, isnan, mod, nonzero, sum, abs, in1d
 from numpy.linalg import pinv
 from scipy.linalg import lstsq, svd, eig
 
 from .model import Result
-
-
-### Basic Index functions ###
-# Note: topo_indices and find_indices do very similar things.
-# One of them might be removed in a future release
-
-def topo_indices(strilist, elto):
-    """
-    construct indices from stringlists. holds up to level.2 lists.
-    strilist: list of elements
-    elto: larger list of elements in which strilist elements are looked for.
-    """
-    if isinstance(strilist[0], str):
-        re = [elto.index(stri) for stri in strilist]
-    else:
-        re = [[elto.index(stri) for stri in ll] for ll in strilist]
-    return re  # asarray(re)
-
-def find_indices(x, y):
-    """
-    find all indices i for which x[n] = y[i[n]] (j arbitrary).
-    len(x) < len(y).
-    (This function could be re-moved to __init__ later on)
-    """
-    # this naive method can be improved, see
-    # http://stackoverflow.com/questions/8251541/numpy-for-every-element-in-one-array-find-the-index-in-another-array
-    indices = list()
-    for el_x in x:
-        indices.append(nonzero(el_x == y)[0][0])
-    return asarray(indices)
 
 
 ### Equations and residuals ###
@@ -363,15 +333,12 @@ def mcs_core(result, mon_idx, cor_idx, split_idx):
     if monvecs_f.dtype==float:
         #print('     real eigenvectors / defective matrix. next.')
         return NaN, 0, 0, 0, 0, 0, 0, 0, 0
-    fi = find_indices(split_idx[0], mon_idx)
-    result.A_km[:], Res, Dev_fast_rc, SV = corrector_systems(result.matrix[:, fi, :],
-                                                   monvecs_f, split_idx[0],
-                                                   cor_idx, result.mu_m,
-                                                   printmsg=False)
-    result.R_jmw[:], rmsResidual, Dev_rc, SvM = monitor_systems(result.matrix,
-                                                         result.A_km, mon_idx,
-                                                         cor_idx, result.mu_m,
-                                                         printmsg=False)
+
+    result.A_km[:], Res, Dev_fast_rc, SV = corrector_systems(result.matrix[:, in1d(mon_idx, split_idx[0]), :],
+                                                             monvecs_f, split_idx[0], cor_idx, result.mu_m,
+                                                             printmsg=False)
+    result.R_jmw[:], rmsResidual, Dev_rc, SvM = monitor_systems(result.matrix, result.A_km, mon_idx,
+                                                                cor_idx, result.mu_m, printmsg=False)
 
     if result.include_dispersion:
         Dev_res, result.d_jw[:], result.b_k[:] = dispersion_process(result.matrix, Dev_rc)
@@ -456,8 +423,8 @@ def layer(response, trials = -1):
     result = Result(response) # preallocate result (initialized by 'empty')
 
     # 1) Run MCS through a number (locruns) of monitor subsets and pick the one with the smallest chi^2.
-    mon_idx = topo_indices(result.topology.mon_names, result.topology.line)
-    cor_idx = topo_indices(result.topology.corr_names, result.topology.line)
+    mon_idx = list( result.topology.line_index(result.topology.mon_names) )
+    cor_idx = list( result.topology.line_index(result.topology.corr_names) )
 
     if trials == -1:
         trials = 2 * (result.J - 1)

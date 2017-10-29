@@ -10,6 +10,8 @@ from model_generator import random_response_drift
 from pickle import load
 from numpy.testing import assert_array_almost_equal_nulp
 
+from cobea.model import DriftSpace
+
 reference_dict = {'set1': (30,32,1,0.02)} # (K, J, M, relative_noise)
 
 
@@ -36,9 +38,18 @@ def compare_results(new_result, old_result):
             pass
 
 
-def compare_computation_to_reference(response_filename, result_filename, make_reference=False):
+def load_response(response_filename, drift_space=None):
     with open(response_filename,'rb') as f:
-         response = load(f)
+        response = load(f)
+        try:
+            ke = response.known_element
+        except AttributeError:
+            response.known_element = None if drift_space is None else DriftSpace(drift_space[:2], drift_space[2])
+    return response
+
+
+def compare_computation_to_reference(response_filename, result_filename, make_reference=False):
+    response = load_response(response_filename)
 
     result = cobea(response)
 

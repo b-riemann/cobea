@@ -6,7 +6,7 @@ optimization procedures in :py:class:`BE_Model`.
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from numpy import abs, angle, argsort, asarray, cumsum, diag, dot, einsum, \
-    empty, exp, real, pi, ravel_multi_index, sqrt, sum, zeros, ones
+    empty, exp, in1d, real, pi, ravel_multi_index, ones, sqrt, sum, zeros, nonzero, diff
 from scipy.linalg import svd # eigh
 from warnings import warn
 from pickle import dump
@@ -282,8 +282,7 @@ class BEModel(BasicModel):
             Full Jacobian matrix for the vector representation of the BE model.
         """
 
-        offs = self._offsets[[0,2,4,5,6]]
-        jacomat = zeros([offs[-1], self.K * self.J * self.M])
+        jacomat = zeros([self.ndim, self.K * self.J * self.M])
         E_kjm = self.E_kjm()
 
         def kjw(k, j, w):
@@ -299,8 +298,8 @@ class BEModel(BasicModel):
                         # grad[m] = - sum(S.T *sum( xi * c[m].imag,axis=2)) #- sum_jk(sum_d( .. ))
                         # delmu[m] -= sum_jkd S[j,k] xi[k,j,d] c[m,k,j,d].imag
 
-        pos = offs[0]
         # A_km
+        pos = self._offsets[0]
         for k in range(self.K):
             for m in range(self.M):
                 for j in range(self.J):
@@ -312,8 +311,9 @@ class BEModel(BasicModel):
                 # cmplx = 2*sum(E[k,:,m].conj() *sum(xi[k] * R[:,m,:],axis=1)) #sum_j(sum_d(..))
                 # = 2 sum_jd xi[k,j,d] * R[j,m,d] E[k,j,m].conj()
                 pos += 1
+
         # R_jmw
-        pos = offs[1]  # start index for R_jmw elements
+        pos = self._offsets[2]
         for j in range(self.J):
             for m in range(self.M):
                 for w in range(self.M):
@@ -328,7 +328,7 @@ class BEModel(BasicModel):
 
         if self.include_dispersion:
             # b_k
-            pos = offs[2]  # start index for b_k elements
+            pos = self._offsets[4]  # offs[2]  # start index for b_k elements
             for k in range(self.K):
                 for j in range(self.J):
                     for w in range(self.M):
@@ -336,7 +336,7 @@ class BEModel(BasicModel):
                         jacomat[pos, idx] = self.d_jw[j, w]
                 # grad[pos] = 2*sum( xi[k] * self.d_jw )
                 pos += 1
-            # self.d_jw
+            # d_jw
             for j in range(self.J):
                 for w in range(self.M):
                     for k in range(self.K):
@@ -440,6 +440,10 @@ def filter_to_mask(filter, labels):
     return asarray(x, dtype=bool)
 
 
+def _find_index(array, item_list):
+    return nonzero( in1d(array, item_list) )[0]
+
+
 class Topology():
     """
     Representation of corrector/monitor labels and the order between them along the ring. During creation, all columns and rows of the input matrix, together with their labels in corr_names, mon_names, are re-ordered in ascending s-position according to the line list.
@@ -493,6 +497,50 @@ class Topology():
         self.line = line
         self.argsort_k = cnums_i
         self.argsort_j = mnums_i
+
+    def monitor_index(self, monitor_label):
+        """
+        find the index/indices of monitor label(s) in self.monitor_names
+        """
+        return _find_index(self.mon_names, monitor_label)
+
+    def corrector_index(self, corrector_label):
+        """
+        find the index/indices of corrector label(s) in self.monitor_names
+        """
+        return _find_index(self.corr_names, corrector_label)
+
+    def line_index(self, item_label):
+        return _find_index(self.line, item_label)
+
+
+class DriftSpace():
+    """
+    Representation of drift space information
+
+    Parameters
+    ----------
+    mon_names : list
+        list of monitor labels for the drift space
+    length : float
+        length of drift space
+    """
+    def __init__(self, mon_names, length):
+        self.mon_names = mon_names
+        self.length = length
+
+    def r_prime_upstream(self, rj_drift, rj_drift_err=None):
+        """
+        compute spatial derivative of eigenvector at the beginning of the drift space given the eigenvectors at its ends
+        """
+        return diff(rj_drift, axis=0) / self.length, None
+
+    def inside_tracking(self, rj_drift, delta_s, rj_drift_err=None):
+        r_prime, r_prime_err = self.r_prime_upstream( rj_drift )
+        return rj_drift[0] + r_prime * delta_s, None
+
+    def __str__(self):
+        return 'drift space in %s -- %s with length %.4f m.' % (self.mon_names[0], self.mon_names[1], self.length)
 
 
 class Response():
@@ -552,7 +600,7 @@ class Response():
         self.matrix = self.matrix[:, self.topology.argsort_j, :]
         self.include_dispersion = include_dispersion
         self.unit = unit
-        self.drift_space = drift_space
+        self.known_element = None if drift_space is None else DriftSpace(drift_space[:2], drift_space[2])
 
     def pop_monitor(self,monitor_name):
         monitor_mask = self.topology.mon_names != monitor_name
@@ -584,6 +632,9 @@ class Result(BEModel):
         Original input response matrix
     error : object
         computed BE model errors, represented as :py:class:`ErrorModel` object
+    drift_space: tuple
+        Drift space information. The monitor labels from the input Response object have been replaced
+        by their indices in self.topology.mon_names
     additional : dict
         may contain the following keywords
 
@@ -594,7 +645,8 @@ class Result(BEModel):
         conv : dict
             dictionary with L-BFGS convergence information (if convergence_info was True)
         invariants : array
-            computed during normalization of monitor vectors if drift space is given. These are just returned for completeness and do not contain information about beam physics.
+            computed during normalization of monitor vectors if drift_space is given.
+            These are just returned for completeness and do not contain information about beam physics.
         pca_singvals : array
             custom info from MCS algorithm
         pca_orbits : array
@@ -603,10 +655,11 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.20'
+        self.version = '0.21'
         self.matrix = response.matrix
         self.unit = response.unit
-        self.drift_space = response.drift_space
+        self.known_element = response.known_element
+
         K, J, M = response.matrix.shape
         BEModel.__init__(self, K, J, M, response.topology, response.include_dispersion, **kwargs)
         self.error = ErrorModel(K, J, M, response.include_dispersion)
@@ -617,8 +670,6 @@ class Result(BEModel):
         compute errors in attribute :py:data:`error` for given BE-Model parameters and input response,
         including errors for Ripken-Mais parameters
         """
-        if not self.include_dispersion:
-            warn('there is a bug in error computation for include_dispersion=False, which will be corrected in the next release.')
         # Note: this method contains out-commented code for an alternative to SVD usage (eigh).
         # the eigh values are sorted in increasing order, while svd is in decreasing order.
 
@@ -628,14 +679,14 @@ class Result(BEModel):
         # w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)
         del jacomat
 
-        # we cut off the smallest values according to the remaining number of scaling invariants.
-        # 2 values are cut for each mode, and 1 for dispersion.
-        cutoff = 2 * self.M + 1
+        # invariants: two values for each mode (complex scaling factor), and one for dispersion (real scaling factor).
+        n_invariants = (2*self.M + 1) if self.include_dispersion else 2*self.M
 
-        s[:-cutoff] = 1 / s[:-cutoff]
-        s[-cutoff:] = 0
-        # w[:cutoff] = 0
-        # w[cutoff:] = 1/sqrt(w[cutoff:])
+        # cut off the smallest values according to the remaining number of scaling invariants.
+        s[:-n_invariants] = 1 / s[:-n_invariants]
+        s[-n_invariants:] = 0
+        # w[:n_invariants] = 0
+        # w[n_invariants:] = 1/sqrt(w[n_invariants:])
 
         u = dot(u, diag(s))
         # v = dot(v,diag(w))
@@ -644,12 +695,11 @@ class Result(BEModel):
         # we now have
         # sigma_rho^2 = A.T v v.T A = A.T u u.T A
 
-        # compute variance and related quantities
+        # compute variance by formula, depending on effective degrees of freedom (without scaling-invariants)
+        # (``Error computations and approximate Hessian'')
         self.error.chi_squared = sum((self.matrix - self.response_matrix())**2)
-        # effective degrees of freedom D-D_inv, BE+d model
-        dof = 2 * (self.A_km.size + self.R_jmw.size) + self.K + self.J * self.M - self.M - 1
-        # variance formula (``Error computations and approximate Hessian'')
-        self.error.variance = self.error.chi_squared * self.matrix.size / (self.matrix.size - dof)
+        effective_dof = self.ndim - n_invariants
+        self.error.variance = self.error.chi_squared * self.matrix.size / (self.matrix.size - effective_dof)
 
         rss_in = sum(self.matrix**2)
         print('     input response RMS: %.3e %s' % (sqrt(rss_in / self.matrix.size), self.unit))
@@ -664,7 +714,7 @@ class Result(BEModel):
         self.error._from_statevec(x_sigmas)
         del x_sigmas
 
-        self.error.additional = {'eigvals': s, 'cutoff': cutoff}
+        self.error.additional = {'eigvals': s}
 
         Re_idx = self._offsets[2]
         Im_idx = self._offsets[3]

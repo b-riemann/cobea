@@ -101,7 +101,7 @@ def import_response(filename, normalized=True, remove_monitors=('BPM12',),
     response = Response(r_kjw, corr_names, ['BPM%02i' % j for j in bpms],
                         read_elemnames(line_file), unit='(m/rad)',
                         corr_filters=('HK*', 'VK*'), drift_space=drift_info(drift),
-                        include_dispersion=True)
+                        include_dispersion=False)
     for monitor in remove_monitors:
         response.pop_monitor(monitor)
     return response, pulser_tunes
@@ -157,7 +157,6 @@ def drift_info(drift):
 if __name__ == '__main__':
     recompute = True
     printresults = True
-    record_convergence = False
     if len(sys.argv) > 1:
         filestr = sys.argv[1]
         if len(sys.argv) > 2:
@@ -181,8 +180,7 @@ if __name__ == '__main__':
 
     result_filename = save_path + 'result.pickle'
     if recompute:
-        result = cobea(response,
-                       convergence_info=record_convergence)
+        result = cobea(response)
         result.save(result_filename)
     else:
         result = load_result(result_filename)
@@ -192,5 +190,4 @@ if __name__ == '__main__':
         plt.plot_result(result, prefix=save_path, comparison_data=tbt_data_in_file)
         print('Tunes: ')
         for m, modtune in enumerate(tbt_data_in_file['tunes']):
-            print('TbT: %.5f, cobea: %.5f $\pm$ %.2e' %
-                  (modtune, result.tune(m), result.error.mu_m[m] / (2 * pi)))
+            print('TbT: %.5f, cobea: %.5f +- %.2e' % (modtune, result.tune(m), result.error.mu_m[m] / (2 * pi)))

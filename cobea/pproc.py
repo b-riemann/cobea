@@ -5,7 +5,6 @@ Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 
 from numpy import asarray, conj, dot, empty, eye, sign, sum, zeros
-from .mcs import find_indices
 
 
 def symplectic_form(D=2):
@@ -213,13 +212,12 @@ def layer(result, convergence_info=False):
         result.additional['conv'] = l_bfgs_iterate()
 
     try:  # assume that drift_space information was given
-        di = find_indices(result.drift_space[:2], result.topology.mon_names)
-        print(("PPr> normalizing using drift\n"
-               "       %s -- %s with length ~ %.4f m.") % tuple(result.drift_space))
-        normalize_using_drift(result, di, result.drift_space[2])
+        print('PPr> normalizing using\n       ' + result.known_element.__str__())
+        drift_js = result.topology.monitor_index( result.known_element.mon_names )
+        normalize_using_drift(result, drift_js, result.known_element.length )
         print("       invariants: %s" % result.additional['invariants'])
-    except TypeError: # drift_space is None
-        print('PPr> no drift space given, guessing tune quadrant by phase advance sign')
+    except AttributeError:
+        print('PPr> no known element given, guessing tune quadrant by phase advance sign')
         guess_mu_sign(result)
 
     print('PPr> computing fit errors')

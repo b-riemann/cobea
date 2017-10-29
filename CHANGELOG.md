@@ -1,3 +1,9 @@
+## Version 0.21 ##
+
+* Bug in error computation for missing dispersion has been corrected.
+* DriftSpace class, plotting of continuous optical functions in known elements.
+* low-level index functions have been simplified (part of topology objects and/or numpy.in1d)
+
 ### Version 0.20a ###
 
 * drift space information is now included in the Response input object

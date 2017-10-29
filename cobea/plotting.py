@@ -4,13 +4,16 @@ routines for plotting cobea results
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from matplotlib.pyplot import *
-from numpy import sqrt, pi, nanmax, abs, unwrap, NaN, where, any, squeeze, arange, ones, angle, exp
+from numpy import sqrt, pi, nanmax, abs, unwrap, NaN, where, any, squeeze, arange, ones, angle, exp, empty, diff, \
+    linspace
 
 ## Axes and Colors ##
 
 # Colors:
     # http://colorbrewer2.org/, number of classes: 3 (or 4), nature: qualitative, only show: colorblind safe, print friendly
     # result: "4-class paired", colors: a6cee3, 1f78b4, b2df8a, (33a02c)
+from scipy.interpolate import BPoly
+
 Re_clr = '#33a02c'  # 'mediumturquoise'
 Re_clr2 = '#b2df8a'  # 'mediumseagreen'
 Im_clr = '#a0332c'  # 'mediumturquoise', interchanged red and green
@@ -67,6 +70,7 @@ def printshow(savecond, savename='', fig=gcf()):
         show()
     else:
         fig.savefig(savename, transparent=True)
+        close(fig)
         print('figure printed to ' + savename + '.')
 
 
@@ -199,23 +203,22 @@ def plot_Dev_err(result, w=0, corr_filter='all'):
     return mat_fig, hist_fig
 
 
-def _plot_Re(ax, val, err, label='', color=Re_clr, xval=[]):
-    if len(xval) < 1:
+def _plot_Re(ax, val, err=None, label='', color=Re_clr, xval=None, marker='+'):
+    if xval is None:
         xval=arange(len(val))
-    ax.fill_between(xval, val - err, val + err, label=label,
-                    facecolor=color, linewidth=0, alpha=0.4)
-    ax.plot(xval, val, marker='+', color='black', linewidth=0.3)
+    if err is not None:
+        ax.fill_between(xval, val - err, val + err, label=label,
+                        facecolor=color, linewidth=0, alpha=0.4)
+    ax.plot(xval, val, marker=marker, color='black', linewidth=0.3)
 
 
-def _plot_ReIm(ax, val, err, estr='', xval=[]):
-    if len(xval) < 1:
+def _plot_ReIm(ax, val, err=None, estr='', xval=None, markers=('+', 'x')):
+    if xval is None:
         xval=arange(len(val))
-    ax.fill_between(xval, val.real - err.real, val.real + err.real,
-                    facecolor=Re_clr, linewidth=0, alpha=0.4, label='Re'+estr)
-    ax.fill_between(xval, val.imag - err.imag, val.imag + err.imag,
-                    facecolor=Im_clr, linewidth=0, alpha=0.4, label='Im'+estr)
-    ax.plot(xval, val.real, marker='+', color='black', linewidth=0.3)
-    ax.plot(xval, val.imag, marker='x', color='black', linewidth=0.3)
+    _plot_Re(ax, val.real, err.real if err is not None else None, xval=xval,
+             color=Re_clr, label='Re'+estr, marker=markers[0])
+    _plot_Re(ax, val.imag, err.imag if err is not None else None, xval=xval,
+             color=Im_clr, label='Im'+estr, marker=markers[1])
 
 
 def _draw_zero(ax):
@@ -240,7 +243,7 @@ def R_jmw(result, m, w=None, direction='xy', ax=gca()):
     _plot_ReIm(ax, val, err)
 
     if 'invariants' in result.additional:  # normalized data
-        ax.set_ylabel(r'$\hat R_{j%i%c}$ / m' % (m, direction[w]))
+        ax.set_ylabel(r'$\hat R_{j%i%c}$ / $\sqrt{\mathrm{m}}$' % (m, direction[w]))
     else:
         ax.set_ylabel(r'$R_{j%i%c}$ / m' % (m, direction[w]))
     _draw_zero(ax)
@@ -261,8 +264,7 @@ def cbeta_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=gca()):
     if 'beta_jmw' in comparison_data:
         cm = comp_minimal(comparison_data)
 
-    _plot_Re(ax, result.cbeta_jmw[:, m, w],
-             result.error.cbeta_jmw[:, m, w], 'cobea')
+    _plot_Re(ax, result.cbeta_jmw[:, m, w], result.error.cbeta_jmw[:, m, w], label='cobea')
     if 'beta_jmw' in comparison_data:
         comp_beta = cm['beta_jmw'][:, m, w] if result.M > 1 else cm['beta_jmw'][:, m]
         ax.plot(comp_beta, marker='.', color=modelc,
@@ -298,8 +300,7 @@ def delphi_jmw(result, m, w=None, comparison_data={}, yl=-1, direction='xy', ax=
         ax.fill_between(bpmj, 0 * plus, plus, facecolor=Re_clr2,
                         alpha=0.4, linewidth=0)
 
-    _plot_Re(ax, result.delphi_jmw[:, m, w], result.error.delphi_jmw[:, m, w],
-             'cobea', xval=bpmj[1:])
+    _plot_Re(ax, result.delphi_jmw[:, m, w], result.error.delphi_jmw[:, m, w], label='cobea', xval=bpmj[1:])
 
     if 'delphi_jmw' in comparison_data:
         delphi_m = _w_expand(comparison_data['delphi_jmw'], m, w)
@@ -328,9 +329,7 @@ def d_jw(result, w, comparison_data, direction='xy', ax=gca()):
     """
     plot const*dispersion (incl. errors) into an axis for a given direction w (0: x, 1: y)
     """
-    _plot_Re(ax, result.d_jw[:, w],
-             result.error.d_jw[:, w],
-             'cobea $d_{j%c}$' % direction[w])
+    _plot_Re(ax, result.d_jw[:, w], result.error.d_jw[:, w], label='cobea $d_{j%c}$' % direction[w])
 
     if 'd_jw' in comparison_data:
         cm = comp_minimal(comparison_data)
@@ -342,15 +341,19 @@ def d_jw(result, w, comparison_data, direction='xy', ax=gca()):
     ax.set_ylabel('m')
 
 
-def _xstrlabel_subplots(n_fig, x_elems):
+def _vert_subplots(n_fig, plot_type):
     fig, ax = subplots(n_fig, 1, sharex=True)
     [axi.grid(True, linestyle='--') for axi in ax]
-    siz = plot_size(plot_type=3 if x_elems > 35 else 6)
+    siz = plot_size(plot_type)
     if n_fig < 4:
         fig.set_size_inches((siz[0],siz[1]*0.75))
     else:
         fig.set_size_inches(siz)
     return fig, ax
+
+
+def _xstrlabel_subplots(n_fig, x_elems):
+    return _vert_subplots(n_fig, 3 if x_elems > 35 else 6)
 
 
 def monitor_results(result, m=0, w=None, comparison_data={}, direction='xy'):
@@ -477,7 +480,7 @@ def corrector_results(result, m=0, comparison_data={}, direction='xy', filter='a
     return fig
 
 
-def plot_result(result, print_figures=True, prefix='', comparison_data={}, direction='xy', plot_flags='mcdtv'):
+def plot_result(result, print_figures=True, prefix='', comparison_data={}, direction='xy', plot_flags='mcdtvs'):
     """
     plot cobea results.
 
@@ -544,26 +547,20 @@ def plot_result(result, print_figures=True, prefix='', comparison_data={}, direc
         ax.set_xlim((0, result.additional['conv']['it'][-1]))
         printshow(print_figures, prefix + 'convergence.pdf', fig)
 
-    # if 's' in plot_flags and result.drift_space is not None:
-        # def beta_interp(s_pos, beta, alfa, sint):
-        #     # find unique s values first
-        #     msk = ones(s_pos.shape[0], dtype=bool)
-        #     msk[1:] = diff(s_pos) != 0
-        #     xi = s_pos[msk]
-        #     outvals = empty((2, len(sint)), dtype=beta.dtype)
-
-        #     yi = empty((xi.shape[0], 2), dtype=beta.dtype)
-        #     for n in range(2):
-        #         yi[:, 0] = beta[n, msk]
-        #         yi[:, 1] = -2 * alfa[n, msk]
-        #         bp = BPoly.from_derivatives(xi, yi, orders=3)
-        #         outvals[n] = bp(sint)
-        #     return outvals
-
-        # di = find_indices(result.drift_space[:2], result.topology.mon_names)
-        # sint = arange(0,256.0)/256 * drift_space[2]
-        # for m in range(result.M):
-        #     beta = [result.beta_jmw[j,m,m] for j in di]
-        #     Rpc = (result.R_jmw[di[1],m,m] - result.R_jmw[di[0],m,m]).conj() / result.drift_space[2]
-        #     alfa = [-(result.R_jmw[j,m,m] * Rpc).real for j in di]
-        #    out
+    if 's' in plot_flags and result.known_element is not None:
+        delta_s = linspace(0, result.known_element.length, 256)
+        R_ends = result.R_jmw[ result.topology.monitor_index(result.known_element.mon_names) ]
+        for m in range(result.M):
+            for w in range(result.M):
+                fig, ax = _vert_subplots(3, 3)
+                R_s, R_s_err = result.known_element.inside_tracking(R_ends[:, m, w], delta_s)
+                beta_s = R_s.real**2 + R_s.imag**2
+                phi_deg_s = angle( R_s*R_ends[0, m, w].conj() ) * 180 / pi
+                _plot_ReIm(ax[0], R_s, err=R_s_err, xval=delta_s, markers=(None,None))
+                ax[0].set_ylabel(r'$\hat R_{%i%c}(s)$ / $\sqrt{\mathrm{m}}$' % (m, direction[w]))
+                _plot_Re(ax[1], beta_s, err=None, xval=delta_s, marker=None)
+                ax[1].set_ylabel(r'$\beta_{%i%c}(s)$ / m' % (m, direction[w]))
+                ax[-1].set_xlabel('distance from upstream monitor / m')
+                _plot_Re(ax[2], phi_deg_s, err=None, xval=delta_s, marker=None)
+                ax[2].set_ylabel(r'$\phi_{%i%c}(s)$ / deg' % (m, direction[w]))
+                printshow(print_figures, prefix + 'known_element_m%i_%s.pdf' % (m, direction[w]), fig)

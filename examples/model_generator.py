@@ -103,7 +103,7 @@ def random_response_drift(K, J, M=1, include_dispersion=True, relative_noise=0.0
             print('hidden model saved to ' + hidden_filename)
 
     return Response(measured_matrix, topology.corr_names, topology.mon_names,
-                    topology.line, include_dispersion, unit='a.u.'), drift
+                    topology.line, include_dispersion, drift_space=drift, unit='a.u.')
 
 
 if __name__ == '__main__':
@@ -113,9 +113,9 @@ if __name__ == '__main__':
     hidden_filename = 'hidden_model.pickle'
     result_filename = None # 'cobea_result.pickle'
 
-    response, drift_space = random_response_drift(30, 32, hidden_filename=hidden_filename)
+    response = random_response_drift(30, 32, hidden_filename=hidden_filename)
 
-    result = cobea(response, drift_space)
+    result = cobea(response)
 
     if result_filename is not None:
         result.save(result_filename)
