@@ -325,7 +325,7 @@ def mcs_core(result, mon_idx, cor_idx, split_idx):
         #print('     not enough correctors. next.')
         return NaN, 0, 0, 0, 0, 0, 0, 0, 0
 
-    Tpart, pcaDevs, Sg, pcaCoeffs = pca_tracking(result.matrix, partmons, partcorrs)
+    Tpart, pcaDevs, Sg, pcaCoeffs = pca_tracking(result.input_matrix, partmons, partcorrs)
 
     result.mu_m[:], Z = oneturn_eigen(Tpart[0], Tpart[1])
 
@@ -334,16 +334,16 @@ def mcs_core(result, mon_idx, cor_idx, split_idx):
         #print('     real eigenvectors / defective matrix. next.')
         return NaN, 0, 0, 0, 0, 0, 0, 0, 0
 
-    result.A_km[:], Res, Dev_fast_rc, SV = corrector_systems(result.matrix[:, in1d(mon_idx, split_idx[0]), :],
+    result.A_km[:], Res, Dev_fast_rc, SV = corrector_systems(result.input_matrix[:, in1d(mon_idx, split_idx[0]), :],
                                                              monvecs_f, split_idx[0], cor_idx, result.mu_m,
                                                              printmsg=False)
-    result.R_jmw[:], rmsResidual, Dev_rc, SvM = monitor_systems(result.matrix, result.A_km, mon_idx,
+    result.R_jmw[:], rmsResidual, Dev_rc, SvM = monitor_systems(result.input_matrix, result.A_km, mon_idx,
                                                                 cor_idx, result.mu_m, printmsg=False)
 
     if result.include_dispersion:
-        Dev_res, result.d_jw[:], result.b_k[:] = dispersion_process(result.matrix, Dev_rc)
+        Dev_res, result.d_jw[:], result.b_k[:] = dispersion_process(result.input_matrix, Dev_rc)
     else:
-        Dev_res = result.matrix - Dev_rc
+        Dev_res = result.input_matrix - Dev_rc
         result.d_jw[:] = 0# dsp = 0
         # b = 0 # dsp, b are casted into zeros at final run in function 'layer'
     rmsResidual = sum(Dev_res**2)

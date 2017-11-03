@@ -1,3 +1,11 @@
+## Version 0.22 ##
+
+* Error margins for all quantities could be significantly reduced due to an error found
+  in computing the variance expectation value.
+* paper format in plot_results changed to DIN.
+* errors are plotted as boxes, plots are using standard matplotlib colors.
+* Response and Result now have a name attribute (shown when printing results).
+
 ## Version 0.21 ##
 
 * Bug in error computation for missing dispersion has been corrected.

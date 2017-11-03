@@ -6,7 +6,7 @@ optimization procedures in :py:class:`BE_Model`.
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from numpy import abs, angle, argsort, asarray, cumsum, diag, dot, einsum, \
-    empty, exp, in1d, real, pi, ravel_multi_index, ones, sqrt, sum, zeros, nonzero, diff
+    empty, exp, in1d, real, pi, ravel_multi_index, ones, sqrt, sum, zeros, nonzero, diff, mean
 from scipy.linalg import svd # eigh
 from warnings import warn
 from pickle import dump
@@ -57,11 +57,12 @@ class BasicModel():
         
         # offset array for state vector, see _from_statevec
         # to model parameter conversion
-        self._offsets = cumsum((M, self.A_km.size, self.A_km.size, self.R_jmw.size, self.R_jmw.size,
-                        self.b_k.size, self.d_jw.size))  
+        sizes = [M, self.A_km.size, self.A_km.size, self.R_jmw.size, self.R_jmw.size]
+        if include_dispersion:
+            sizes.extend([self.b_k.size, self.d_jw.size])
+        self._offsets = cumsum(sizes)
+        self.ndim = self._offsets[-1]  # number of search space dimensions
 
-        # number of search space dimensions:
-        self.ndim = self._offsets[6 if include_dispersion else 4]
         self.include_dispersion = include_dispersion
 
 
@@ -110,26 +111,99 @@ class BasicModel():
 
 
 class ErrorModel(BasicModel):
-    def __init__(self, K, J, M, include_dispersion):
+    def __init__(self, K, J, M, include_dispersion, chi_squared, input_rms, unit=''):
         BasicModel.__init__(self, K, J, M, include_dispersion)
         # additional containers for Ripken-Mais errors. In BEModel, the Ripken-Mais
         # expectation values are generated from eigenorbits directly
         self.cbeta_jmw = empty(self.R_jmw.shape, dtype=float)
         self.phi_jmw = empty(self.R_jmw.shape, dtype=float)
         self.delphi_jmw = empty((self.J - 1, self.M, self.M), dtype=float)
-        self.chi_squared = empty(1, dtype=float)
-        self.variance = empty(1, dtype=float)
-        self.EVR = empty(1, dtype=float)
+        self.chi_squared = chi_squared
+        self.input_rms = input_rms
+        self.variance = -1.0
+        self.ri2v = -1.0
+        self.unit = unit
         self.additional = {}
-        self._computed = False
+
+    def tune(self, m):
+        return self.mu_m[m] / (2*pi)
 
     def __str__(self):
-        if self._computed:
-            s = 'error summary:\n  chi^2 = %.3e\n' % self.chi_squared
-            s += '  explained value ratio (EVR): %.2f\n' % self.EVR
-        else:
-            s = '(errors have not been computed)'
+        s = 'error summary:\n                 chi^2: %.3e (%s)^2\n' % (self.chi_squared, self.unit)
+        s += '    variance (exp.val): %.3e (%s)^2\n' % (self.variance, self.unit)
+        s += '             input rms: %.3e  %s\n' % (self.input_rms, self.unit)
+        s += '  root(input/variance): %.2f\n' % self.ri2v
         return s
+
+
+class Topology():
+    """
+    Representation of corrector/monitor labels and the order between them along the ring. During creation, all columns and rows of the input matrix, together with their labels in corr_names, mon_names, are re-ordered in ascending s-position according to the line list.
+
+    Parameters
+    ----------
+    corr_names : list
+        corrector labels (strings), e.g. ['HK01', 'VCM1', 'special_Hcorr', ...].
+        The list index should correspond to the monitor_index, e.g. matrix[1,:,:]
+        holds all information for the corrector named 'VCM1' in the above example.
+    mon_names : list
+        monitor labels (strings), e.g. ['BPM1','BPM2a','buggy_BPM',..,'important-bpm42'].
+        the list index should correspond to the monitor_index, e.g. matrix[:,0,:]
+        holds all information for the monitor named 'BPM1' in the above example.
+    line : list
+        corrector and monitor labels in ascending s position, downstream of the storage ring.
+
+    """
+    def __init__(self, corr_names, mon_names, line, corr_filters=()):
+        # sort correctors in s-position order
+        corr_names = asarray(corr_names)
+        cnums = list()
+        for corr in corr_names:
+            try:
+                cnums.append(line.index(corr))
+            except ValueError:
+                warn_str = 'line does not contain corrector %s of response; corrector will be omitted.' % corr
+                warn(warn_str)
+        cnums = asarray(cnums)
+        cnums_i = argsort( cnums )
+        cnums = cnums[cnums_i]
+        self.corr_names = corr_names[cnums_i]
+
+        self.corr_masks = {'all': ones(len(self.corr_names), dtype=bool)} if len(corr_filters) == 0 else {}
+        for filter in corr_filters:
+            self.corr_masks[filter] = filter_to_mask(filter, self.corr_names)
+
+        # sort monitors in s-position order
+        mon_names = asarray(mon_names)
+        mnums = asarray([line.index(mons) for mons in mon_names])
+        if len(mnums) < len(mon_names):
+            warn('line does not contain all monitors of the response. the missing monitor information is removed.')
+        mnums_i = argsort( mnums )
+        mnums = mnums[mnums_i]
+        self.mon_names = mon_names[mnums_i]
+
+        # generate S_jk matrix
+        self.S_jk = empty((len(mnums),len(cnums)), dtype=int)
+        for k, cnum in enumerate(cnums):
+            self.S_jk[:,k] = 2*(cnum < mnums) - 1
+        self.line = line
+        self.argsort_k = cnums_i
+        self.argsort_j = mnums_i
+
+    def monitor_index(self, monitor_label):
+        """
+        find the index/indices of monitor label(s) in self.monitor_names
+        """
+        return _find_index(self.mon_names, monitor_label)
+
+    def corrector_index(self, corrector_label):
+        """
+        find the index/indices of corrector label(s) in self.monitor_names
+        """
+        return _find_index(self.corr_names, corrector_label)
+
+    def line_index(self, item_label):
+        return _find_index(self.line, item_label)
 
 
 class BEModel(BasicModel):
@@ -200,7 +274,7 @@ class BEModel(BasicModel):
         E = self.E_jkm()
 
         # self._c[m,k,j,w] = R*[j,m,w] E[j,k,m] D[k,m]
-        einsum('jmw,jkm,km->mkjw',self.R_jmw.conj(),E,self.A_km,out=self._c)
+        einsum('jmw,jkm,km->mkjw',self.R_jmw.conj(), E, self.A_km, out=self._c)
 
         # xi[k,j,d] += sum_m self._c[m,k,j,d].real
         xi += sum(self._c.real, axis=0)
@@ -243,6 +317,7 @@ class BEModel(BasicModel):
                     self._x[pos2:] = 2*einsum('kjw,k->jw',xi,self.b_k).flatten()
         xi *= xi
         return sum(xi), self._x
+
 
     def _gradient(self, x, Dev, opt=3):
         """compute residual squared error and gradient (see :py:func:`gradient_unwrapped`)
@@ -444,76 +519,6 @@ def _find_index(array, item_list):
     return nonzero( in1d(array, item_list) )[0]
 
 
-class Topology():
-    """
-    Representation of corrector/monitor labels and the order between them along the ring. During creation, all columns and rows of the input matrix, together with their labels in corr_names, mon_names, are re-ordered in ascending s-position according to the line list.
-
-    Parameters
-    ----------
-    corr_names : list
-        corrector labels (strings), e.g. ['HK01', 'VCM1', 'special_Hcorr', ...].
-        The list index should correspond to the monitor_index, e.g. matrix[1,:,:]
-        holds all information for the corrector named 'VCM1' in the above example.
-    mon_names : list
-        monitor labels (strings), e.g. ['BPM1','BPM2a','buggy_BPM',..,'important-bpm42'].
-        the list index should correspond to the monitor_index, e.g. matrix[:,0,:]
-        holds all information for the monitor named 'BPM1' in the above example.
-    line : list
-        corrector and monitor labels in ascending s position, downstream of the storage ring.
-
-    """
-    def __init__(self, corr_names, mon_names, line, corr_filters=()):
-        # sort correctors in s-position order
-        corr_names = asarray(corr_names)
-        cnums = list()
-        for corr in corr_names:
-            try:
-                cnums.append(line.index(corr))
-            except ValueError:
-                stri = 'line does not contain corrector %s of response; corrector will be omitted.' % corr
-                warn(stri)
-        cnums = asarray(cnums)
-        cnums_i = argsort( cnums )
-        cnums = cnums[cnums_i]
-        self.corr_names = corr_names[cnums_i]
-
-        self.corr_masks = {'all': ones(len(self.corr_names), dtype=bool)} if len(corr_filters) == 0 else {}
-        for filter in corr_filters:
-            self.corr_masks[filter] = filter_to_mask(filter, self.corr_names)
-
-        # sort monitors in s-position order
-        mon_names = asarray(mon_names)
-        mnums = asarray([line.index(mons) for mons in mon_names])
-        if len(mnums) < len(mon_names):
-            warn('line does not contain all monitors of the response. the missing monitor information is removed.')
-        mnums_i = argsort( mnums )
-        mnums = mnums[mnums_i]
-        self.mon_names = mon_names[mnums_i]
-
-        # generate S_jk matrix
-        self.S_jk = empty((len(mnums),len(cnums)), dtype=int)
-        for k, cnum in enumerate(cnums):
-            self.S_jk[:,k] = 2*(cnum < mnums) - 1
-        self.line = line
-        self.argsort_k = cnums_i
-        self.argsort_j = mnums_i
-
-    def monitor_index(self, monitor_label):
-        """
-        find the index/indices of monitor label(s) in self.monitor_names
-        """
-        return _find_index(self.mon_names, monitor_label)
-
-    def corrector_index(self, corrector_label):
-        """
-        find the index/indices of corrector label(s) in self.monitor_names
-        """
-        return _find_index(self.corr_names, corrector_label)
-
-    def line_index(self, item_label):
-        return _find_index(self.line, item_label)
-
-
 class DriftSpace():
     """
     Representation of drift space information
@@ -531,13 +536,23 @@ class DriftSpace():
 
     def r_prime_upstream(self, rj_drift, rj_drift_err=None):
         """
-        compute spatial derivative of eigenvector at the beginning of the drift space given the eigenvectors at its ends
+        Spatial derivative of spatial vector at the beginning of the drift space
+        given spatial vectors at its ends.
+
+        Returns
+        -------
+        r_prime : array_like
+            spatial derivative
+        r_prime_err : array_like
+            error of spatial derivative for given rj_drift_err, else None
         """
-        return diff(rj_drift, axis=0) / self.length, None
+        return diff(rj_drift, axis=0) / self.length, \
+               None if rj_drift_err is None else diff(rj_drift_err, axis=0) / self.length
 
     def inside_tracking(self, rj_drift, delta_s, rj_drift_err=None):
-        r_prime, r_prime_err = self.r_prime_upstream( rj_drift )
-        return rj_drift[0] + r_prime * delta_s, None
+        r_prime, r_prime_err = self.r_prime_upstream( rj_drift, rj_drift_err )
+        return rj_drift[0] + r_prime * delta_s, \
+               None if rj_drift_err is None else rj_drift_err[0] + r_prime_err * delta_s
 
     def __str__(self):
         return 'drift space in %s -- %s with length %.4f m.' % (self.mon_names[0], self.mon_names[1], self.length)
@@ -580,27 +595,29 @@ class Response():
     topology : object
         A :py:class:`Topology` object holding the re-ordered py:data:'corr_names', py:data:'mon_names',
         and py:data:'line' as attributes.
-    matrix : array
+    input_matrix : array
         re-ordered input response matrix.
-
+    known_element: object
+        Known-element object used for normalization. At the moment, only :py:class:`DriftSpace` can be used.
     """
     def __init__(self, matrix, corr_names, mon_names, line, include_dispersion=True, unit='',
-                 drift_space=None, corr_filters=()):
-        self.matrix = asarray(matrix)
+                 drift_space=None, corr_filters=(), name=''):
+        self.input_matrix = asarray(matrix)
         if matrix.shape[0] != len(corr_names):
             raise Exception('list of corr_names != number of correctors')
         elif matrix.shape[1] != len(mon_names):
             raise Exception('list of mon_names != number of monitors')
         elif matrix.ndim == 2:
             # the matrix array must always have 3 dimensions, shape = [K,J,M]
-            self.matrix = self.matrix[:, :, None]
+            self.input_matrix = self.input_matrix[:, :, None]
 
         self.topology = Topology(corr_names, mon_names, line, corr_filters)
-        self.matrix = self.matrix[self.topology.argsort_k, :, :]
-        self.matrix = self.matrix[:, self.topology.argsort_j, :]
+        self.input_matrix = self.input_matrix[self.topology.argsort_k, :, :]
+        self.input_matrix = self.input_matrix[:, self.topology.argsort_j, :]
         self.include_dispersion = include_dispersion
         self.unit = unit
         self.known_element = None if drift_space is None else DriftSpace(drift_space[:2], drift_space[2])
+        self.name = name
 
     def pop_monitor(self,monitor_name):
         monitor_mask = self.topology.mon_names != monitor_name
@@ -608,7 +625,7 @@ class Response():
         self.topology.S_jk = self.topology.S_jk[monitor_mask, :]
         self.topology.argsort_j = self.topology.argsort_j[monitor_mask]
 
-        self.matrix = self.matrix[:, monitor_mask]
+        self.input_matrix = self.input_matrix[:, monitor_mask]
         print('Rsp> monitor %s removed' % monitor_name)
 
     def save(self,filename):
@@ -622,19 +639,24 @@ class Response():
         print('Response object saved in '+filename)
 
 
+def error_str(val, err, fmt='.3e', sigma_scale=3, label=''):
+    return ('{val:%s} +- {scaled_err:%s} ({sigma_scale:d} sigma)' % (fmt,fmt)).format(val=val,
+                                                                                      scaled_err=sigma_scale*err,
+                                                                                      sigma_scale=sigma_scale)
+
+
 class Result(BEModel):
     """
     A container for all COBEA results that also computes secondary outputs on demand.
 
     Attributes
     ----------
-    matrix : array
+    input_matrix : array
         Original input response matrix
     error : object
         computed BE model errors, represented as :py:class:`ErrorModel` object
-    drift_space: tuple
-        Drift space information. The monitor labels from the input Response object have been replaced
-        by their indices in self.topology.mon_names
+    known_element: object
+        Known-element object used for normalization. At the moment, only :py:class:`DriftSpace` can be used.
     additional : dict
         may contain the following keywords
 
@@ -655,15 +677,22 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.21'
-        self.matrix = response.matrix
+        self.version = '0.22'
+        self.input_matrix = response.input_matrix
         self.unit = response.unit
         self.known_element = response.known_element
+        self.name = response.name
 
-        K, J, M = response.matrix.shape
+        K, J, M = response.input_matrix.shape
         BEModel.__init__(self, K, J, M, response.topology, response.include_dispersion, **kwargs)
-        self.error = ErrorModel(K, J, M, response.include_dispersion)
+        self.error = None
         self.additional = additional
+
+    def chi_squared(self):
+        return sum((self.input_matrix - self.response_matrix())**2)
+
+    def input_rms(self):
+        return sqrt(mean(self.input_matrix**2))
 
     def update_errors(self):
         """
@@ -673,46 +702,36 @@ class Result(BEModel):
         # Note: this method contains out-commented code for an alternative to SVD usage (eigh).
         # the eigh values are sorted in increasing order, while svd is in decreasing order.
 
-        # preparations for Hessian error estimation (H approx J J.T)
-        jacomat = self._jacobian_unwrapped()
-        u, s, vh = svd(jacomat, full_matrices=False)
-        # w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)
-        del jacomat
+        # (1) variance by formula depending on effective degrees of freedom (without scaling-invariants)
+        # (``Error computations and approximate Hessian'')
+        self.error = ErrorModel(self.K, self.J, self.M, self.include_dispersion,
+                                self.chi_squared(), self.input_rms(), self.unit)
+        n_invariants = 2*self.M + (1 if self.include_dispersion else 0)  # each mode: 2 (complex), dispersion: 1 (real)
+        effective_dof = self.ndim - n_invariants
+        denominator = self.input_matrix.size - effective_dof
+        # print('     error scaling (amplitude): %.2f' % sqrt(self.input_matrix.size / denominator))
+        self.error.variance = self.error.chi_squared / denominator
+        sqv = sqrt(self.error.variance)
+        self.error.ri2v = self.error.input_rms / sqv
 
-        # invariants: two values for each mode (complex scaling factor), and one for dispersion (real scaling factor).
-        n_invariants = (2*self.M + 1) if self.include_dispersion else 2*self.M
+        # preparations for Hessian error estimation (H approx J J.T)
+        u, s, vh = svd( self._jacobian_unwrapped(), full_matrices=False, overwrite_a=True, check_finite=False)
+        # w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)  # encapsulate jacomat for this as it is large
 
         # cut off the smallest values according to the remaining number of scaling invariants.
-        s[:-n_invariants] = 1 / s[:-n_invariants]
+        # s = sigma * S_inv
+        s[:-n_invariants] = sqv / s[:-n_invariants]
         s[-n_invariants:] = 0
         # w[:n_invariants] = 0
-        # w[n_invariants:] = 1/sqrt(w[n_invariants:])
+        # w[n_invariants:] = sqrt(self.error.variance / w[n_invariants:])
 
-        u = dot(u, diag(s))
+        u = einsum('ab,b->ab', u, s)  # = U sigma * S_inv
         # v = dot(v,diag(w))
         # print dot(u,u.T) / dot(v,v.T)
+        # we now have sigma_rho^2 = A.T v v.T A = A.T u u.T A
 
-        # we now have
-        # sigma_rho^2 = A.T v v.T A = A.T u u.T A
 
-        # compute variance by formula, depending on effective degrees of freedom (without scaling-invariants)
-        # (``Error computations and approximate Hessian'')
-        self.error.chi_squared = sum((self.matrix - self.response_matrix())**2)
-        effective_dof = self.ndim - n_invariants
-        self.error.variance = self.error.chi_squared * self.matrix.size / (self.matrix.size - effective_dof)
-
-        rss_in = sum(self.matrix**2)
-        print('     input response RMS: %.3e %s' % (sqrt(rss_in / self.matrix.size), self.unit))
-        self.error.EVR = sqrt(rss_in / self.error.chi_squared)
-
-        x_sigmas = empty(s.shape[0])
-        sqv = sqrt(self.error.variance)
-        print('     input sigma: %.2e %s' % (sqv, self.unit))
-        for p in range(s.shape[0]):
-            # rhoTv = u[p,:] #v[p,:]
-            x_sigmas[p] = sqrt(dot(u[p], u[p])) * sqv
-        self.error._from_statevec(x_sigmas)
-        del x_sigmas
+        self.error._from_statevec( sqrt(einsum('pq,pq->p', u, u)) )  # errors of state vector variables
 
         self.error.additional = {'eigvals': s}
 
@@ -725,14 +744,14 @@ class Result(BEModel):
                     A_Re = 2 * self.R_jmw[j,m,w].real
                     A_Im = 2 * self.R_jmw[j,m,w].imag
                     Atu = A_Re * u[Re_idx, :] + A_Im * u[Im_idx, :]  # compute A.T u
-                    self.error.cbeta_jmw[j, m, w] = sqrt(dot(Atu, Atu)) * sqv
+                    self.error.cbeta_jmw[j, m, w] = sqrt(dot(Atu, Atu))
 
                     # compute phi error in DEGREES
                     beta = self.cbeta_jmw
                     A_Re = -self.R_jmw[j,m,w].imag / beta[j, m, w]
                     A_Im = self.R_jmw[j,m,w].real / beta[j, m, w]
                     Atu = A_Re * u[Re_idx,:] + A_Im * u[Im_idx, :]  # compute A.T u
-                    self.error.phi_jmw[j, m, w] = 180 * sqrt(dot(Atu, Atu)) * sqv / pi
+                    self.error.phi_jmw[j, m, w] = 180 * sqrt(dot(Atu, Atu)) / pi
 
                     Re_idx += 1
                     Im_idx += 1
@@ -740,7 +759,6 @@ class Result(BEModel):
         for j in range(1, self.J):
             self.error.delphi_jmw[j-1] = sqrt(self.error.phi_jmw[j]**2 + self.error.phi_jmw[j - 1]**2)
 
-        self.error._computed = True
 
     def save(self,filename):
         """
@@ -755,12 +773,15 @@ class Result(BEModel):
     def __str__(self):
         s = '-------- cobea result summary --------\nparameter numbers:\n'
         s += '  K = %i correctors, J = %i monitors, M = %i directions\n' % (self.K, self.J, self.M)
-        s += '  JKM = %i response elements\n  (JM+K)*' % self.matrix.size
+        s += '  JKM = %i response elements\n  (JM+K)*' % self.input_matrix.size
         s += '(2M+1)' if self.include_dispersion else '2M'
         s += '+M = %i model parameters\n' % self.ndim
+        print('input response RMS: %.3e %s' % (self.input_rms(), self.unit))
+
         s += 'tunes:\n'
         for m in range(self.M):
-            s += '  m={mode}: {tune:.4f} +- {error:.4f}\n'.format(mode=m, tune=self.tune(m),
-                                                                  error=self.error.mu_m[m]/(2*pi))
-        s += self.error.__str__()
+            s += error_str(self.tune(m), self.error.tune(m), fmt='.4f', label='mode %i:' % m) + '\n'
+        s += '(no errors computed yet)' if self.error is None else  self.error.__str__()
         return s
+
+

@@ -55,7 +55,7 @@ def optimization_layer(result, iprint=-1):
     x = result._to_statevec()
     print('Opt> search space dimensions: %i. Running...' % result.ndim)
     xopt, fval, optimizer_dict = fmin_l_bfgs_b(
-        result._gradient, x, args=(result.matrix,), iprint=iprint, maxiter=2e4, factr=100)
+        result._gradient, x, args=(result.input_matrix,), iprint=iprint, maxiter=2e4, factr=100)
     print('Opt> Finished with %i gradient (L-BFGS) iterations' % optimizer_dict['nit'])
     print('       chi^2 = %.3e (final)' % fval)
     result._from_statevec(xopt)

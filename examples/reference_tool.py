@@ -15,10 +15,10 @@ from cobea.model import DriftSpace
 reference_dict = {'set1': (30,32,1,0.02)} # (K, J, M, relative_noise)
 
 
-def compare_attribute(old_result, new_result, attribute):
+def compare_attribute(old_result, new_result, attribute, nulp=1):
     arr = [getattr(result,attribute) for result in (new_result, old_result)]
     try:
-        assert_array_almost_equal_nulp(arr[0], arr[1])
+        assert_array_almost_equal_nulp(arr[0], arr[1], nulp=nulp)
     except AssertionError:
         raise AssertionError('%s is different: computation %s vs reference %s' % (attribute,
                                                                                   arr[0].repr(), arr[1].repr))
@@ -26,8 +26,11 @@ def compare_attribute(old_result, new_result, attribute):
 
 def compare_results(new_result, old_result):
     for attribute in ('R_jmw', 'A_km', 'mu_m', 'd_jw', 'b_k'):
-        compare_attribute(old_result, new_result, attribute)
-        compare_attribute(old_result.error, new_result.error, attribute)
+        # nulp*spacing(1) ~ 2.22e-16
+        compare_attribute(old_result, new_result, attribute, nulp=1)
+        # the deviation for error is higher as its exact values are very sensitive,
+        # but a relative error of errors of ~ 1e-8 is still OK.
+        compare_attribute(old_result.error, new_result.error, attribute, nulp=8)
 
     print('present result is approx. equivalent to reference.')
 

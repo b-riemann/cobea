@@ -29,7 +29,8 @@ def import_response(filename='20_10_2017/fofb_rpm.txt'):
 
     response = Response(response_matrix, corr_labels, ['BPM%02i' % j for j in range(1, 55)],
                         read_elemnames(input_prefix+'line.text'), unit='(mm/A)',
-                        corr_filters=('shk*', 'svk*'), drift_space=drift_info('u250'))
+                        corr_filters=('shk*', 'svk*'), drift_space=drift_info('u250'),
+                        name=filename)
     response.pop_monitor('BPM12')
     return response
 
@@ -43,7 +44,7 @@ if __name__=='__main__':
 
     response = import_response()
 
-    result = cobea(response, drift_space=drift_info('u250'))
+    result = cobea(response)
     result.save(save_path+'result.pickle')
 
     plt.plot_result(result, prefix=save_path)

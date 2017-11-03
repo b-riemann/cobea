@@ -6,6 +6,7 @@ If you are interested in general input/output for another accelerator, check mod
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from cobea import read_elemnames, cobea, Response, load_result
+from cobea.model import error_str
 import cobea.plotting as plt
 from numpy import max, arange, asarray, nanmean, zeros, NaN, pi
 from os import makedirs
@@ -101,9 +102,10 @@ def import_response(filename, normalized=True, remove_monitors=('BPM12',),
     response = Response(r_kjw, corr_names, ['BPM%02i' % j for j in bpms],
                         read_elemnames(line_file), unit='(m/rad)',
                         corr_filters=('HK*', 'VK*'), drift_space=drift_info(drift),
-                        include_dispersion=False)
+                        include_dispersion=True, name=filename.split('/')[-1])
     for monitor in remove_monitors:
         response.pop_monitor(monitor)
+
     return response, pulser_tunes
 
 
@@ -153,6 +155,11 @@ def drift_info(drift):
         # = DS + D71 in simulation/del14_02.lte
         return 'BPM38', 'BPM39', 0.088 + 0.779798407729
 
+def comparison_printer(result, tbt_tunes):
+    print('Tunes: ')
+    for m, modtune in enumerate(tbt_tunes):
+        print('cobea: %s, TbT: %.4f, dif: %.4f, ' % (error_str(result.tune(m), result.error.tune(m), fmt='.4f'),
+                                                     modtune, modtune-result.tune(m) % 1))
 
 if __name__ == '__main__':
     recompute = True
@@ -176,7 +183,6 @@ if __name__ == '__main__':
 
     response, tbt_tunes = import_response(filestr)
     response.save(save_path + 'response_input.pickle')
-    tbt_data_in_file = {'name': 'TbT', 'tunes': tbt_tunes}
 
     result_filename = save_path + 'result.pickle'
     if recompute:
@@ -186,8 +192,5 @@ if __name__ == '__main__':
         result = load_result(result_filename)
 
     if printresults:
-        fig = plt.prepare_figure(plot_type=3)
-        plt.plot_result(result, prefix=save_path, comparison_data=tbt_data_in_file)
-        print('Tunes: ')
-        for m, modtune in enumerate(tbt_data_in_file['tunes']):
-            print('TbT: %.5f, cobea: %.5f +- %.2e' % (modtune, result.tune(m), result.error.mu_m[m] / (2 * pi)))
+        plt.plot_result(result, prefix=save_path)
+        comparison_printer(result, tbt_tunes)
