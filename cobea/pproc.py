@@ -212,13 +212,14 @@ def layer(result, convergence_info=False):
         result.additional['conv'] = l_bfgs_iterate()
 
     try:  # assume that drift_space information was given
-        print('PPr> normalizing using\n       ' + result.known_element.__str__())
+        print('Postprocessing: normalizing using\n    ' + result.known_element.__str__())
         drift_js = result.topology.monitor_index( result.known_element.mon_names )
         normalize_using_drift(result, drift_js, result.known_element.length )
-        print("       invariants: %s" % result.additional['invariants'])
+        print("    invariants: %s" % result.additional['invariants'])
     except AttributeError:
-        print('PPr> no known element given, guessing tune quadrant by phase advance sign')
+        print('Postprocessing: no known element given,\n    guessing tune quadrant by phase advance')
         guess_mu_sign(result)
 
-    print('PPr> computing fit errors')
+    print('Postprocessing: computing errors...')
     result.update_errors()
+    print(result.error)

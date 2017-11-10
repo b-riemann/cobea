@@ -1,3 +1,10 @@
+## Version 0.23 ##
+
+* new testing folder (moved [reference_tool](testing/reference_tool.py) there)
+* internal timing in [cobea](cobea/__init__.py) function has been removed, use [cobea_timing](testing/cobea_timing.py)
+  for this in the future.
+* internals of error computation changed (moving to ErrorModel object)
+
 ## Version 0.22 ##
 
 * Error margins for all quantities could be significantly reduced due to an error found
@@ -40,7 +47,7 @@
 
 ## Version 0.16 ##
 
-* A [reference tool](examples/reference_tool.py) has been added to compare results of different runs.
+* A [reference tool](testing/reference_tool.py) has been added to compare results of different runs.
 * Output of cobea.mcs.layer has been reduced.
 * Postprocessing layer is now a separate function (cobea.pproc.layer).
 

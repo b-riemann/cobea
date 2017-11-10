@@ -5,11 +5,13 @@ optimization procedures in :py:class:`BE_Model`.
 
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
-from numpy import abs, angle, argsort, asarray, cumsum, diag, dot, einsum, \
-    empty, exp, in1d, real, pi, ravel_multi_index, ones, sqrt, sum, zeros, nonzero, diff, mean
+from numpy import abs, angle, argsort, asarray, cumsum, dot, einsum, empty, exp, in1d, real, pi, \
+    ravel_multi_index, ones, savez, sqrt, sum, zeros, nonzero, diff, mean
 from scipy.linalg import svd # eigh
 from warnings import warn
 from pickle import dump
+
+version = '0.23'
 
 
 class BasicModel():
@@ -111,30 +113,79 @@ class BasicModel():
 
 
 class ErrorModel(BasicModel):
-    def __init__(self, K, J, M, include_dispersion, chi_squared, input_rms, unit=''):
+    """
+    A class computing and storing all BE model errors,
+    including additional attributes for Ripken-Mais errors.
+    """
+    def __init__(self, K, J, M, include_dispersion, chi_squared, input_rms, unit):
+        # this method contains out-commented code for an alternative to SVD usage (eigh).
+        # the eigh values are sorted in increasing order, while svd is in decreasing order.
+
         BasicModel.__init__(self, K, J, M, include_dispersion)
-        # additional containers for Ripken-Mais errors. In BEModel, the Ripken-Mais
-        # expectation values are generated from eigenorbits directly
+
         self.cbeta_jmw = empty(self.R_jmw.shape, dtype=float)
         self.phi_jmw = empty(self.R_jmw.shape, dtype=float)
         self.delphi_jmw = empty((self.J - 1, self.M, self.M), dtype=float)
-        self.chi_squared = chi_squared
+
         self.input_rms = input_rms
-        self.variance = -1.0
-        self.ri2v = -1.0
         self.unit = unit
+        self.ri2v = -1.0
         self.additional = {}
+
+        # variance by formula depending on effective degrees of freedom (without scaling invariants)
+        # (``Error computations and approximate Hessian'')
+        self.n_invariants = 2*self.M + (1 if self.include_dispersion else 0)  # each mode: 2 (complex), dispersion: 1 (real)
+        effective_dof = self.ndim - self.n_invariants
+        denominator = self.K*self.J*self.M - effective_dof
+        self.chi_squared = chi_squared
+        self.variance = chi_squared / denominator
+
+    def parse_jacobian(self, jacobian_matrix):
+        sqv = sqrt(self.variance)
+        self.ri2v = self.input_rms / sqv
+        # preparations for Hessian error estimation (H approx J J.T)
+        u, s, vh = svd( jacobian_matrix, full_matrices=False, overwrite_a=True, check_finite=False)
+        # w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)  # encapsulate jacomat for this as it is large
+
+        # cut off the smallest values according to the remaining number of scaling invariants.
+        # s = sigma * S_inv
+        s[:-self.n_invariants] = sqv / s[:-self.n_invariants]
+        s[-self.n_invariants:] = 0
+        # w[:n_invariants] = 0
+        # w[n_invariants:] = sqrt(self.error.variance / w[n_invariants:])
+        self.additional['eigvals'] = s
+
+        u = einsum('ab,b->ab', u, s)  # = U sigma * S_inv
+        # v = dot(v,diag(w))
+        # print dot(u,u.T) / dot(v,v.T)
+        # we now have sigma_rho^2 = A.T v v.T A = A.T u u.T A
+        self._from_statevec( sqrt(einsum('pq,pq->p', u, u)) )  # errors of state vector variables
+        return u
 
     def tune(self, m):
         return self.mu_m[m] / (2*pi)
 
     def __str__(self):
-        s = 'error summary:\n                 chi^2: %.3e (%s)^2\n' % (self.chi_squared, self.unit)
+        s =  '                 chi^2: %.3e (%s)^2\n' % (self.chi_squared, self.unit)
         s += '    variance (exp.val): %.3e (%s)^2\n' % (self.variance, self.unit)
-        s += '             input rms: %.3e  %s\n' % (self.input_rms, self.unit)
+        s += '    input response rms: %.3e %s\n' % (self.input_rms, self.unit)
         s += '  root(input/variance): %.2f\n' % self.ri2v
         return s
 
+
+def _sort_list_by_line(elem_list, line, desc):
+    elem_list = asarray(elem_list)
+    elem_nums = list()
+    for elem in elem_list:
+        try:
+            elem_nums.append(line.index(elem))
+        except ValueError:
+            warn_str = 'line does not contain element %s; this %s will be omitted.' % (elem, desc)
+            warn(warn_str)
+    elem_nums = asarray(elem_nums)
+    elem_nums_i = argsort( elem_nums )
+    elem_nums = elem_nums[elem_nums_i]
+    return elem_list[elem_nums_i], elem_nums, elem_nums_i
 
 class Topology():
     """
@@ -152,43 +203,60 @@ class Topology():
         holds all information for the monitor named 'BPM1' in the above example.
     line : list
         corrector and monitor labels in ascending s position, downstream of the storage ring.
+    corr_filters : list
+        (optional)
+        a list of filter strings with special character *. Example: To create
+        one corrector set for all correctors with names starting with Cx, and another
+        ending with dy, enter ('Cx*','*dy')
+    assume_sorted : str
+        cobea (especially cobea.mcs) requires rows and columns of the response to be sorted along the beam path.
+        Only change this if you know what you are doing!
 
     """
-    def __init__(self, corr_names, mon_names, line, corr_filters=()):
+    def __init__(self, corr_names, mon_names, line, corr_filters=(), assume_sorted=False):
         # sort correctors in s-position order
-        corr_names = asarray(corr_names)
-        cnums = list()
-        for corr in corr_names:
-            try:
-                cnums.append(line.index(corr))
-            except ValueError:
-                warn_str = 'line does not contain corrector %s of response; corrector will be omitted.' % corr
-                warn(warn_str)
-        cnums = asarray(cnums)
-        cnums_i = argsort( cnums )
-        cnums = cnums[cnums_i]
-        self.corr_names = corr_names[cnums_i]
+        # corr_names = asarray(corr_names)
+        # cnums = list()
+        # for corr in corr_names:
+        #     try:
+        #         cnums.append(line.index(corr))
+        #     except ValueError:
+        #         warn_str = 'line does not contain corrector %s of response; corrector will be omitted.' % corr
+        #         warn(warn_str)
+        # cnums = asarray(cnums)
+        # cnums_i = argsort( cnums )
+        # cnums = cnums[cnums_i]
+        # self.corr_names = corr_names[cnums_i]
+        self.corr_names, cnums, self.argsort_k = _sort_list_by_line( corr_names, line, 'corrector')
 
         self.corr_masks = {'all': ones(len(self.corr_names), dtype=bool)} if len(corr_filters) == 0 else {}
         for filter in corr_filters:
             self.corr_masks[filter] = filter_to_mask(filter, self.corr_names)
 
         # sort monitors in s-position order
-        mon_names = asarray(mon_names)
-        mnums = asarray([line.index(mons) for mons in mon_names])
-        if len(mnums) < len(mon_names):
-            warn('line does not contain all monitors of the response. the missing monitor information is removed.')
-        mnums_i = argsort( mnums )
-        mnums = mnums[mnums_i]
-        self.mon_names = mon_names[mnums_i]
+        # mon_names = asarray(mon_names)
+        # mnums = list()
+        # for mon in mon_names:
+        #     try:
+        #         mnums.append(line.index(mon))
+        #     except ValueError:
+        #         warn_str = 'line does not contain corrector %s of response; corrector will be omitted.' % corr
+        #         warn(warn_str)
+        # mnums = asarray(mnums)
+        # if len(mnums) < len(mon_names):
+        #     warn('line does not contain all monitors of the response. the missing monitor information is removed.')
+        # mnums_i = argsort( mnums )
+        # mnums = mnums[mnums_i]
+        # self.mon_names = mon_names[mnums_i]
+        self.mon_names, mnums, self.argsort_j = _sort_list_by_line( mon_names, line, 'monitor')
 
         # generate S_jk matrix
-        self.S_jk = empty((len(mnums),len(cnums)), dtype=int)
+        self.S_jk = empty((len(self.mon_names),len(self.corr_names)), dtype=int)
         for k, cnum in enumerate(cnums):
             self.S_jk[:,k] = 2*(cnum < mnums) - 1
         self.line = line
-        self.argsort_k = cnums_i
-        self.argsort_j = mnums_i
+        # self.argsort_k = cnums_i
+        # self.argsort_j = mnums_i
 
     def monitor_index(self, monitor_label):
         """
@@ -581,14 +649,22 @@ class Response():
         whether to use a model with or without dispersion for fitting. default: True
     unit : str
         (optional, default: '')
-        unit for the input values of the matrix
+        unit for the input values of the matrix,
+        containing a '/' character to separate monitor unit (e.g. mm) and corrector unit (e.g. A or mrad)
     drift_space : iterable
         (optional, default: None)
         a tuple or list with 3 elements (monitor name 1, monitor name 2, drift space length / m)
     corr_filters : list
+        (optional)
         a list of filter strings with special character *. Example: To create
         one corrector set for all correctors with names starting with Cx, and another
         ending with dy, enter ('Cx*','*dy')
+    name : str
+        (optional, default: '')
+        a short description of the measured response
+    assume_sorted : str
+        cobea (especially cobea.mcs) requires rows and columns of the response to be sorted along the beam path.
+        Only change this if you know what you are doing!
 
     Attributes
     ----------
@@ -597,25 +673,34 @@ class Response():
         and py:data:'line' as attributes.
     input_matrix : array
         re-ordered input response matrix.
+    mon_unit : str
+        unit for BPM readings (extracted from unit argument)
+    corr_unit : str
+        unit for corrector strengths (extracted from unit argument)
     known_element: object
         Known-element object used for normalization. At the moment, only :py:class:`DriftSpace` can be used.
     """
-    def __init__(self, matrix, corr_names, mon_names, line, include_dispersion=True, unit='',
-                 drift_space=None, corr_filters=(), name=''):
+    def __init__(self, matrix, corr_names, mon_names, line, include_dispersion=True,
+                 unit='a.u./a.u.', drift_space=None, corr_filters=(), name='', assume_sorted=False):
+        self.version = version
+
+        # self.input_matrix array must always have 3 dimensions, shape = (K, J, M)
         self.input_matrix = asarray(matrix)
         if matrix.shape[0] != len(corr_names):
-            raise Exception('list of corr_names != number of correctors')
+            raise Exception('length of corr_names != number of correctors')
         elif matrix.shape[1] != len(mon_names):
-            raise Exception('list of mon_names != number of monitors')
+            raise Exception('length of mon_names != number of monitors')
         elif matrix.ndim == 2:
-            # the matrix array must always have 3 dimensions, shape = [K,J,M]
             self.input_matrix = self.input_matrix[:, :, None]
 
-        self.topology = Topology(corr_names, mon_names, line, corr_filters)
-        self.input_matrix = self.input_matrix[self.topology.argsort_k, :, :]
-        self.input_matrix = self.input_matrix[:, self.topology.argsort_j, :]
+        # sort monitors and correctors to line ("downstream") order
+        self.topology = Topology(corr_names, mon_names, line, corr_filters, assume_sorted)
+        if not assume_sorted:
+            self.input_matrix = self.input_matrix[self.topology.argsort_k, :, :]
+            self.input_matrix = self.input_matrix[:, self.topology.argsort_j, :]
+
         self.include_dispersion = include_dispersion
-        self.unit = unit
+        self.mon_unit, self.corr_unit = unit.split('/')
         self.known_element = None if drift_space is None else DriftSpace(drift_space[:2], drift_space[2])
         self.name = name
 
@@ -626,15 +711,15 @@ class Response():
         self.topology.argsort_j = self.topology.argsort_j[monitor_mask]
 
         self.input_matrix = self.input_matrix[:, monitor_mask]
-        print('Rsp> monitor %s removed' % monitor_name)
+        print('rsp> monitor %s removed' % monitor_name)
 
-    def save(self,filename):
+    def save(self, filename):
         """
         save the Response object as a pickle file with the given filename.
         The object can be reloaded using :py:func:`cobea.load_result`
         (which simply uses pickle)
         """
-        with open(filename,'wb') as f:
+        with open(filename, 'wb') as f:
             dump(self, f, protocol=2)
         print('Response object saved in '+filename)
 
@@ -677,9 +762,10 @@ class Result(BEModel):
             version of the object 
     """
     def __init__(self, response, additional={}, **kwargs):
-        self.version = '0.22'
+        self.version = version
         self.input_matrix = response.input_matrix
-        self.unit = response.unit
+        self.mon_unit = response.mon_unit
+        self.corr_unit = response.corr_unit
         self.known_element = response.known_element
         self.name = response.name
 
@@ -687,6 +773,10 @@ class Result(BEModel):
         BEModel.__init__(self, K, J, M, response.topology, response.include_dispersion, **kwargs)
         self.error = None
         self.additional = additional
+
+    @property
+    def unit(self):
+        return '/'.join((self.mon_unit, self.corr_unit))
 
     def chi_squared(self):
         return sum((self.input_matrix - self.response_matrix())**2)
@@ -699,89 +789,69 @@ class Result(BEModel):
         compute errors in attribute :py:data:`error` for given BE-Model parameters and input response,
         including errors for Ripken-Mais parameters
         """
-        # Note: this method contains out-commented code for an alternative to SVD usage (eigh).
-        # the eigh values are sorted in increasing order, while svd is in decreasing order.
 
-        # (1) variance by formula depending on effective degrees of freedom (without scaling-invariants)
-        # (``Error computations and approximate Hessian'')
-        self.error = ErrorModel(self.K, self.J, self.M, self.include_dispersion,
-                                self.chi_squared(), self.input_rms(), self.unit)
-        n_invariants = 2*self.M + (1 if self.include_dispersion else 0)  # each mode: 2 (complex), dispersion: 1 (real)
-        effective_dof = self.ndim - n_invariants
-        denominator = self.input_matrix.size - effective_dof
-        # print('     error scaling (amplitude): %.2f' % sqrt(self.input_matrix.size / denominator))
-        self.error.variance = self.error.chi_squared / denominator
-        sqv = sqrt(self.error.variance)
-        self.error.ri2v = self.error.input_rms / sqv
+        self.error = ErrorModel(self.K, self.J, self.M, self.include_dispersion, self.chi_squared(),
+                                self.input_rms(), self.unit)
 
-        # preparations for Hessian error estimation (H approx J J.T)
-        u, s, vh = svd( self._jacobian_unwrapped(), full_matrices=False, overwrite_a=True, check_finite=False)
-        # w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)  # encapsulate jacomat for this as it is large
+        u = self.error.parse_jacobian( self._jacobian_unwrapped() )
 
-        # cut off the smallest values according to the remaining number of scaling invariants.
-        # s = sigma * S_inv
-        s[:-n_invariants] = sqv / s[:-n_invariants]
-        s[-n_invariants:] = 0
-        # w[:n_invariants] = 0
-        # w[n_invariants:] = sqrt(self.error.variance / w[n_invariants:])
-
-        u = einsum('ab,b->ab', u, s)  # = U sigma * S_inv
-        # v = dot(v,diag(w))
-        # print dot(u,u.T) / dot(v,v.T)
-        # we now have sigma_rho^2 = A.T v v.T A = A.T u u.T A
-
-
-        self.error._from_statevec( sqrt(einsum('pq,pq->p', u, u)) )  # errors of state vector variables
-
-        self.error.additional = {'eigvals': s}
-
-        Re_idx = self._offsets[2]
-        Im_idx = self._offsets[3]
+        real_idx = self._offsets[2]
+        imag_idx = self._offsets[3]
         for j in range(self.J):
             for m in range(self.M):
                 for w in range(self.M):
                     # compute beta error
-                    A_Re = 2 * self.R_jmw[j,m,w].real
-                    A_Im = 2 * self.R_jmw[j,m,w].imag
-                    Atu = A_Re * u[Re_idx, :] + A_Im * u[Im_idx, :]  # compute A.T u
+                    A_Re = 2 * self.R_jmw[j, m, w].real
+                    A_Im = 2 * self.R_jmw[j, m, w].imag
+                    Atu = A_Re * u[real_idx, :] + A_Im * u[imag_idx, :]  # compute A.T u
                     self.error.cbeta_jmw[j, m, w] = sqrt(dot(Atu, Atu))
 
                     # compute phi error in DEGREES
                     beta = self.cbeta_jmw
-                    A_Re = -self.R_jmw[j,m,w].imag / beta[j, m, w]
-                    A_Im = self.R_jmw[j,m,w].real / beta[j, m, w]
-                    Atu = A_Re * u[Re_idx,:] + A_Im * u[Im_idx, :]  # compute A.T u
+                    A_Re = -self.R_jmw[j, m, w].imag / beta[j, m, w]
+                    A_Im = self.R_jmw[j, m, w].real / beta[j, m, w]
+                    Atu = A_Re * u[real_idx, :] + A_Im * u[imag_idx, :]  # compute A.T u
                     self.error.phi_jmw[j, m, w] = 180 * sqrt(dot(Atu, Atu)) / pi
 
-                    Re_idx += 1
-                    Im_idx += 1
+                    real_idx += 1
+                    imag_idx += 1
 
         for j in range(1, self.J):
             self.error.delphi_jmw[j-1] = sqrt(self.error.phi_jmw[j]**2 + self.error.phi_jmw[j - 1]**2)
 
-
-    def save(self,filename):
+    def save(self, filename):
         """
         save the Result object as a pickle file with the given filename.
         The object can be reloaded using :py:func:`cobea.load_result`
         (which simply uses pickle)
         """
+        #if npz:
+        #    model_attributes = 'unit', 'input_matrix', 'version', 'b_k', 'd_jw', 'mu_m', 'A_km', 'R_jmw',
+        #    topology_attributes = 'mon_names', 'corr_names', 'line', 'argsort_j', 'argsort_k'
+        #    kw_args = {attr: getattr(self, attr) for attr in model_attributes}
+        #    kw_args.update({attr: getattr(self.topology, attr) for attr in topology_attributes})
+        #    # if self.error is not None:
+        #    #     error_attributes = list(model_attributes[-5:] if self.include_dispersion else model_attributes[-3:])
+        #    #     error_attributes.extend(('cbeta_jmw', 'phi_jmw', 'delphi_jmw', 'input_rms', 'ri2v', 'additional'))
+        #    #     kw_args.update({'err_'+attr: getattr(self.error, attr) for attr in error_attributes})
+        #    savez(filename, **kw_args)
+        #
+        # else:
         with open(filename,'wb') as f:
             dump(self, f, protocol=2)
         print('Result object saved in '+filename)
 
     def __str__(self):
-        s = '-------- cobea result summary --------\nparameter numbers:\n'
+        s = 'parameter numbers:\n'
         s += '  K = %i correctors, J = %i monitors, M = %i directions\n' % (self.K, self.J, self.M)
         s += '  JKM = %i response elements\n  (JM+K)*' % self.input_matrix.size
         s += '(2M+1)' if self.include_dispersion else '2M'
         s += '+M = %i model parameters\n' % self.ndim
-        print('input response RMS: %.3e %s' % (self.input_rms(), self.unit))
 
         s += 'tunes:\n'
         for m in range(self.M):
             s += error_str(self.tune(m), self.error.tune(m), fmt='.4f', label='mode %i:' % m) + '\n'
-        s += '(no errors computed yet)' if self.error is None else  self.error.__str__()
+        # s += '(no errors computed yet)' if self.error is None else  self.error.__str__()
         return s
 
 

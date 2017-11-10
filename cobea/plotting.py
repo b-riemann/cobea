@@ -4,44 +4,22 @@ routines for plotting cobea results
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from matplotlib.pyplot import *
-from numpy import sqrt, pi, nanmax, abs, NaN, any, squeeze, arange, ones, angle, exp, linspace
+from numpy import pi, nanmax, abs, any, squeeze, arange, ones, angle, exp, linspace
 from matplotlib.patches import Rectangle
 
 # colors from standard matplotlib color cycle
-Re_clr = '#1f77b4'
-Im_clr = '#ff7f0e'
-model_clr = '#2ca02c'
+real_color = '#1f77b4'
+imag_color = '#ff7f0e'
+comparison_color = '#2ca02c'
 
 # din short and long sizes in inches - never use inches...
 din_a4_l = 11.69
 din_a4_s = din_a5_l = 8.27
 din_a5_s = 5.83
 
-# size, (left, bottom, right, top, wspace, hspace)
+# 'name': (size, (left, bottom, right, top, wspace, hspace))
 figure_adjust = {'A4': ((din_a4_s, din_a4_l), (0.1,  0.07, 0.95, 0.95, None, 0.05)),
                  'A5': ((din_a5_s, din_a5_l), (0.15, 0.10, 0.95, 0.95, None, 0.05))}
-
-
-def print_close(savename='', fig=gcf()):
-    fig.savefig(savename, transparent=True)
-    close(fig)
-    print('figure printed to ' + savename + '.')
-
-
-def coleur(n=-1):
-    """
-    a colorset compiled of:
-    - 0-5: colorbrewer2 2-class paired
-    - 6-11: inverse of 0-5
-    """
-    clr = '#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', \
-          '#59311c', '#e0874b', '#4d2075', '#cc5fd3', '#046566', '#1ce5e3'
-    if n > 11:
-        return 'k'
-    elif n > -1:
-        return clr[n]
-    else:
-        return clr
 
 
 def _make_ticklabels(labels, dir='x', spacing=0, ax=gca()):
@@ -141,21 +119,21 @@ def plot_Dev_err(result, w=0, corr_filter='all'):
     create a figure that shows response matrix and residual error
     for a given direction w (0: x, 1: y)
     """
-
     mat_fig, mat_ax = _xstrlabel_subplots(2, result.J, sharex=True, sharey=True)
+
+    info_table(result, direction='%d' % w, desc=r'input and residual, corrector set %s' % corr_filter, ax=mat_ax[0])
     plot_response(result, w, ax=mat_ax[0], corr_filter=corr_filter)
-    setp(mat_ax[0].get_xticklabels(), visible=False)
     chi_kjw = plot_residual(result, w, ax=mat_ax[1], corr_filter=corr_filter)
 
     hist_fig, hist_ax = _subplots(1, 1, 'A5')
     hist_ax.hist(chi_kjw.flatten(), 40)
-    hist_ax.set_xlabel('deviations / ' + result.unit)
+    hist_ax.set_xlabel('deviations / (%s)' % result.unit)
     hist_ax.set_ylabel('counts')
 
     return mat_fig, hist_fig
 
 
-def _plot_boxes(ax, val, err=None, label='', color=Re_clr, xval=None, marker='.', sigma_scale=3):
+def _plot_boxes(ax, val, err=None, label='', color=real_color, xval=None, marker='.', sigma_scale=3):
     if xval is None:
         xval=arange(len(val))
     if err is not None:
@@ -171,9 +149,9 @@ def _plot_boxes_complex(ax, val, err=None, estr='', xval=None, markers=('.', '.'
     if xval is None:
         xval=arange(len(val))
     _plot_boxes(ax, val.real, err.real if err is not None else None, xval=xval,
-                color=Re_clr, label='Re'+estr, marker=markers[0], sigma_scale=sigma_scale)
+                color=real_color, label='Re' + estr, marker=markers[0], sigma_scale=sigma_scale)
     _plot_boxes(ax, val.imag, err.imag if err is not None else None, xval=xval,
-                color=Im_clr, label='Im'+estr, marker=markers[1], sigma_scale=sigma_scale)
+                color=imag_color, label='Im' + estr, marker=markers[1], sigma_scale=sigma_scale)
 
 
 def _draw_zero(ax):
@@ -189,10 +167,11 @@ def _ground_ylim(ax):
 ## monitor quantities ##
 
 
-def R_jmw(result, m, w=None, direction='xy', ax=gca()):
+def R_jmw(result, m, w=None, direction='xy', ax=None):
     """plot real and imaginary parts of monitor vectors (incl. errors) into an axis for a given mode m"""
-    if w is None:
-        w = m
+    ax = gca() if ax is None else ax
+    w = m if w is None else w
+
     val = result.R_jmw[:, m, w]
     err = result.error.R_jmw[:, m, w]
     _plot_boxes_complex(ax, val, err)
@@ -210,11 +189,11 @@ def comp_minimal(comparison_data):
     return d
 
 
-def cbeta_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=gca()):
+def cbeta_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=None):
     """plot beta resp. const*beta (incl. errors) into an axis for a given mode m"""
     # plot of beta or const*beta
-    if w is None:
-        w = m
+    ax = gca() if ax is None else ax
+    w = m if w is None else w
 
     if 'beta_jmw' in comparison_data:
         cm = comp_minimal(comparison_data)
@@ -222,7 +201,7 @@ def cbeta_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=gca()):
     _plot_boxes(ax, result.cbeta_jmw[:, m, w], result.error.cbeta_jmw[:, m, w], label='cobea')
     if 'beta_jmw' in comparison_data:
         comp_beta = cm['beta_jmw'][:, m, w] if result.M > 1 else cm['beta_jmw'][:, m]
-        ax.plot(comp_beta, marker='.', color=model_clr,
+        ax.plot(comp_beta, marker='.', color=comparison_color,
                 label=cm['name'], linewidth=0.5)
 
     _ground_ylim(ax)
@@ -240,12 +219,13 @@ def _w_expand(comparison_key, m, w):
         return comparison_key[:, m]
 
 
-def delphi_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=gca()):
+def delphi_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=None):
     """
     plot phase-advance per monitor (incl. errors) into an axis for a given mode m
     """
-    if w is None:
-        w = m
+    ax = gca() if ax is None else ax
+    w = m if w is None else w
+
     inter_monitor = arange(result.J) - 0.5
 
     _plot_boxes(ax, result.delphi_jmw[:, m, w], result.error.delphi_jmw[:, m, w], label='cobea', xval=inter_monitor[1:])
@@ -262,7 +242,7 @@ def delphi_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=gca()):
 
     if comparison_available:
         cm = comp_minimal(comparison_data)
-        ax.plot(inter_monitor[1:], delphi_m, marker='.', color=model_clr, linewidth=0.5,
+        ax.plot(inter_monitor[1:], delphi_m, marker='.', color=comparison_color, linewidth=0.5,
                 label=cm['name'] + ' ' + direction[w])
 
     ax.set_ylabel(r'$\Delta \phi_' + direction[w] + '$ / deg')
@@ -273,16 +253,17 @@ def delphi_jmw(result, m, w=None, comparison_data={}, direction='xy', ax=gca()):
         ax.set_ylim((0, yl[1]))
 
 
-def d_jw(result, w, comparison_data, direction='xy', ax=gca()):
+def d_jw(result, w, comparison_data, direction='xy', ax=None):
     """
     plot const*dispersion (incl. errors) into an axis for a given direction w (0: x, 1: y)
     """
+    ax = gca() if ax is None else ax
     _plot_boxes(ax, result.d_jw[:, w], result.error.d_jw[:, w], label='cobea $d_{j%c}$' % direction[w])
 
     if 'd_jw' in comparison_data:
         cm = comp_minimal(comparison_data)
         ax.plot(arange(result.J), cm['d_jw'][:, w] if cm['d_jw'].ndim > 1 else cm['d_jw'],
-                marker='.', color=model_clr,
+                marker='.', color=comparison_color,
                 label=cm['name'] + ' $D_%c$' % direction[w], linewidth=0.5)
     # legend(ncol=2, loc=4, bbox_to_anchor=(1, 0.93))
     _draw_zero(ax)
@@ -302,14 +283,22 @@ def _subplots(n_vert, n_horz, key, **kwargs):
 
 
 def _xstrlabel_subplots(n_fig, x_elems, sharex=True, **kwargs):
-    return _subplots(n_fig, 1, 'A4' if x_elems > 35 else 'A5', sharex=sharex, **kwargs)
+    return _subplots(n_fig, 1, 'A5',  #'A4' if x_elems > 35 else 'A5',
+                     sharex=sharex, **kwargs)
 
 
-def info_table(result, m, direction=None, desc=None, loc='top', ax=gca(), **kwargs):
-    cell_text = (('cobea v%s' % result.version, result.name),
-                 ('%smode %d%s' % (desc+', ' if desc is not None else '', m,
-                                   '' if direction is None else ', direction %s' % direction),
-                  r'tune $Q_%d$ = %.4f $\pm$ %.4f (3$\sigma$)' % (m, result.tune(m), 3*result.error.tune(m))))
+def info_table(result, mode=None, direction=None, desc=None, loc='top', ax=None, **kwargs):
+    ax = gca() if ax is None else ax
+
+    s = list()
+    if desc is not None: s.append(desc)
+    if mode is None:
+        t = r'root(input/variance) = %.2f' % result.error.ri2v
+    else:
+        s.append('mode %d' % mode)
+        t = r'tune $Q_%d$ = %.4f $\pm$ %.4f (3$\sigma$)' % (mode, result.tune(mode), 3*result.error.tune(mode))
+    if direction is not None: s.append('direction %s' % direction)
+    cell_text = (('cobea v%s' % result.version, result.name), (', '.join(s), t))
     ax.table(cellText=cell_text, loc=loc, **kwargs)
 
 
@@ -338,7 +327,7 @@ def monitor_results(result, m=0, w=None, comparison_data={}, direction='xy'):
     show_dispersion = result.include_dispersion and m == w
     fig, ax = _xstrlabel_subplots(4 if show_dispersion else 3, result.J)
 
-    info_table(result, m, direction[w], desc='monitors', ax=ax[0])
+    info_table(result, m, direction[w], desc='monitor quantities', ax=ax[0])
 
     #stri = 'cobea' + ' tune: %.4f' % result.tune(m)
     #stri += ' $\pm$ %.4f' % abs(result.error.mu_m[m] / (2 * pi))
@@ -386,7 +375,7 @@ def cbeta_km(result, m, comparison_data={}, ax=gca(), filter='all'):
     if 'beta_km' in comparison_data:
         cm = comp_minimal(comparison_data)
         ax.plot(cm['beta_km'][k_mask, m], marker='.',
-                color=model_clr, label=cm['name'])
+                color=comparison_color, label=cm['name'])
         ax.legend()
     ax.set_ylabel(r'$|A_{km}| \approx $ const $\beta_km$ / a.u.')
 
@@ -409,13 +398,13 @@ def b_k(result, w=0, comparison_data={}, direction='xy', ax=gca(), filter='all')
         for w in range(result.b_k.shape[1]):
             _plot_boxes(ax, result.b_k[k_mask, w], result.error.b_k[k_mask, w], label='cobea ' + direction[w])
             if 'b_k' in cm:
-                ax.plot(cm['b_k'][k_mask, w], marker='.', color=model_clr, label=cm['name'] + ' ' + direction[w])
+                ax.plot(cm['b_k'][k_mask, w], marker='.', color=comparison_color, label=cm['name'] + ' ' + direction[w])
                 ax.legend()
         ax.set_ylabel(r'$b_{kw}$ / a.u.')
     else:
         _plot_boxes(ax, result.b_k[k_mask], result.error.b_k[k_mask], label='cobea')
         if 'b_k' in cm:
-            ax.plot(cm['b_k'][k_mask], marker='.', color=model_clr, label=cm['name'])
+            ax.plot(cm['b_k'][k_mask], marker='.', color=comparison_color, label=cm['name'])
             ax.legend()
         ax.set_ylabel(r'$b_k$ / a.u.')
     _draw_zero(ax)
@@ -425,7 +414,7 @@ def corrector_results(result, m=0, comparison_data={}, direction='xy', filter='a
     """create a figure with corrector results for a given mode m"""
     fig, ax = _xstrlabel_subplots(4 if result.include_dispersion else 3, result.K)
 
-    info_table(result, m, desc='correctors', ax=ax[0])
+    info_table(result, m, desc='corrector quantities', ax=ax[0])
 
     A_km(result, m, ax=ax[0], filter=filter)
     ax[0].legend(ncol=2)
@@ -439,6 +428,11 @@ def corrector_results(result, m=0, comparison_data={}, direction='xy', filter='a
 
     corrector_label(result.topology.corr_names[result.topology.corr_masks[filter]], dir='x', ax=ax[-1])
     return fig
+
+
+def _savefig_close(fig, savename):
+    fig.savefig(savename, transparent=True)
+    close(fig)
 
 
 def plot_result(result, prefix='', comparison_data={}, direction='xy', plot_flags='mcdtvs'):
@@ -467,29 +461,34 @@ def plot_result(result, prefix='', comparison_data={}, direction='xy', plot_flag
         't': plot_topology -> topology.pdf
         'v': convergence information -> convergence.pdf. Only works if convergence information is available.
     """
+    print('Printing result figures to path %s...' % prefix)
     if 'm' in plot_flags:
         for m in range(result.M):
             for w in range(result.M):
                 fig = monitor_results(result, m, w, comparison_data, direction)
-                print_close(prefix + 'monitor_m%i_%s.pdf' % (m, direction[w]), fig)
+                _savefig_close(fig, prefix + 'monitor_m%i_%s.pdf' % (m, direction[w]))
+        print(' m | monitor figures saved to monitor...pdf.')
 
     if 'c' in plot_flags:
         for m in range(result.M):
             for filter in result.topology.corr_masks:
                 fig = corrector_results(result, m, comparison_data, direction, filter)
-                print_close(prefix + 'corrector_m%i_%s.pdf' % (m, filter.replace('*', '')), fig)
+                _savefig_close(fig, prefix + 'corrector_m%i_%s.pdf' % (m, filter.replace('*', '')))
+        print(' c | corrector figures saved to corrector...pdf.')
 
     if 'd' in plot_flags:
         for w in range(result.M):
             for filter in result.topology.corr_masks:
                 mat_fig, hist_fig = plot_Dev_err(result, w, corr_filter=filter)
                 filter_str = filter.replace('*', '')
-                print_close(prefix + 'Dev_err_%s_%s.pdf' % (direction[w], filter_str), mat_fig)
-                print_close(prefix + 'hist_%s_%s.pdf' % (direction[w], filter_str), hist_fig)
+                _savefig_close(mat_fig, prefix + 'Dev_err_%s_%s.pdf' % (direction[w], filter_str))
+                _savefig_close(hist_fig, prefix + 'hist_%s_%s.pdf' % (direction[w], filter_str))
+        print(' d | input matrix and deviations saved to Dev_err...pdf, hist...pdf.')
 
     if 't' in plot_flags:
         fig = plot_topology(result.topology)
-        print_close(prefix + 'topology.pdf', fig)
+        _savefig_close(fig, prefix + 'topology.pdf')
+        print(' t | topology saved to topology.pdf')
 
     if 'v' in plot_flags and 'conv' in result.additional:  # convergence information is available
         fig, ax = _subplots(1, 1, 'A5')
@@ -497,27 +496,45 @@ def plot_result(result, prefix='', comparison_data={}, direction='xy', plot_flag
         ax.set_xlabel('L-BFGS iterations')
         ax.set_ylabel('residual squared error $\chi^2$')
         ax.set_xlim((0, result.additional['conv']['it'][-1]))
-        print_close(prefix + 'convergence.pdf', fig)
+        _savefig_close(fig, prefix + 'convergence.pdf')
+        print(' v | convergence information saved to convergence.pdf')
 
     if 's' in plot_flags and result.known_element is not None:
-        pass
-        # delta_s = linspace(0, result.known_element.length, 256)
-        # drift_js = result.topology.monitor_index(result.known_element.mon_names)
-        # R_ends = result.R_jmw[ drift_js ]
-        # R_ends_err = result.error.R_jmw[ drift_js ]
-        # for m in range(result.M):
-        #     for w in range(result.M):
-        #         fig, ax = _subplots(3, 1, 'A5')
-        #         R_s, R_s_err = result.known_element.inside_tracking(R_ends[:, m, w], delta_s,
-        #                                                             rj_drift_err=R_ends_err[:, m, w])
-        #         beta_s = R_s.real**2 + R_s.imag**2
-        #         beta_s_err = 2*(R_s.real*R_s_err.real + R_s.imag*R_s_err.imag)
-        #         phi_deg_s = angle( R_s*R_ends[0, m, w].conj() ) * 180 / pi
-        #         _plot_boxes_complex(ax[0], R_s, err=R_s_err, xval=delta_s, markers=(None, None))
-        #         ax[0].set_ylabel(r'$\hat R_{%i%c}(s)$ / $\sqrt{\mathrm{m}}$' % (m, direction[w]))
-        #         _plot_boxes(ax[1], beta_s, err=beta_s_err, xval=delta_s, marker=None)
-        #         ax[1].set_ylabel(r'$\beta_{%i%c}(s)$ / m' % (m, direction[w]))
-        #         ax[-1].set_xlabel('distance from upstream monitor / m')
-        #         _plot_boxes(ax[2], phi_deg_s, err=None, xval=delta_s, marker=None)
-        #         ax[2].set_ylabel(r'$\phi_{%i%c}(s)$ / deg' % (m, direction[w]))
-        #         print_close(prefix + 'known_element_m%i_%s.pdf' % (m, direction[w]), fig)
+        delta_s = linspace(0, result.known_element.length, 256)
+        drift_js = result.topology.monitor_index(result.known_element.mon_names)
+        R_ends = result.R_jmw[drift_js]
+        R_ends_err = result.error.R_jmw[drift_js]
+        d_ends, d_ends_err = result.d_jw[drift_js], result.error.d_jw[drift_js]
+        for m in range(result.M):
+            for w in range(result.M):
+                fig, ax = _subplots(4, 1, 'A5', sharex=True)
+                R_s, R_s_err = result.known_element.inside_tracking(R_ends[:, m, w], delta_s,
+                                                                    rj_drift_err=R_ends_err[:, m, w])
+                beta_s = R_s.real**2 + R_s.imag**2
+                # beta_s_err = 2*(R_s.real*R_s_err.real + R_s.imag*R_s_err.imag)
+                phi_deg_s = angle( R_s*R_ends[0, m, w].conj() ) * 180 / pi
+                #  _plot_boxes_complex(ax[0], R_s, err=R_s_err, xval=delta_s, markers=(None, None))
+
+                info_table(result, m, direction[w],
+                           desc='optics in known element %s--%s' % tuple(result.known_element.mon_names), ax=ax[0])
+
+                ax[0].plot(delta_s, R_s.real, label='Re')
+                ax[0].plot(delta_s, R_s.imag, label='Im')
+                ax[0].set_ylabel(r'$\hat R_{%i%c}(s)$ / $\sqrt{\mathrm{m}}$' % (m, direction[w]))
+                ax[0].legend()
+                # _plot_boxes(ax[1], beta_s, err=beta_s_err, xval=delta_s, marker=None)
+                ax[1].plot(delta_s, beta_s)
+                ax[1].set_ylabel(r'$\beta_{%i%c}(s)$ / m' % (m, direction[w]))
+                # _plot_boxes(ax[2], phi_deg_s, err=None, xval=delta_s, marker=None)
+                ax[2].plot(delta_s, phi_deg_s)
+                ax[2].set_ylabel(r'$\phi_{%i%c}(s)$ / deg' % (m, direction[w]))
+
+                d_s, d_s_err = result.known_element.inside_tracking(d_ends[:,w], delta_s, rj_drift_err=d_ends_err[:,w])
+                ax[3].plot(delta_s, d_s)
+                ax[3].set_ylabel('const * dispersion / m')
+
+                ax[-1].set_xlim((0, result.known_element.length))
+                ax[-1].set_xlabel('distance from %s / m' % result.known_element.mon_names[0])
+                _savefig_close(fig, prefix + 'known_element_m%i_%s.pdf' % (m, direction[w]))
+        print(' s | known element plots saved to known_element...pdf')
+

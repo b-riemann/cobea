@@ -155,11 +155,20 @@ def drift_info(drift):
         # = DS + D71 in simulation/del14_02.lte
         return 'BPM38', 'BPM39', 0.088 + 0.779798407729
 
+
 def comparison_printer(result, tbt_tunes):
     print('Tunes: ')
     for m, modtune in enumerate(tbt_tunes):
         print('cobea: %s, TbT: %.4f, dif: %.4f, ' % (error_str(result.tune(m), result.error.tune(m), fmt='.4f'),
                                                      modtune, modtune-result.tune(m) % 1))
+
+
+def makedir_if_nonexistent(save_path):
+    try:
+        makedirs(save_path)
+    except (FileExistsError, OSError) as e:
+        pass  # save_path already exists
+
 
 if __name__ == '__main__':
     recompute = True
@@ -175,11 +184,7 @@ if __name__ == '__main__':
         filestr = 'delta_input/response.100708-1'
 
     save_path = 'delta_output/%s/' % filestr.split('/')[-1]
-
-    try:
-        makedirs(save_path)
-    except FileExistsError:
-        pass
+    makedir_if_nonexistent(save_path)
 
     response, tbt_tunes = import_response(filestr)
     response.save(save_path + 'response_input.pickle')

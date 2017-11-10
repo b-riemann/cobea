@@ -10,15 +10,12 @@ accelerators by closed-orbit information.
 
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
-from time import time  # for benchmarks
-from pickle import load
-
-from .mcs import layer as startvalue_layer
-
+from pickle import load as pickle_load
 from scipy.optimize.lbfgsb import fmin_l_bfgs_b  # minimize
 
-from .pproc import layer as pproc_layer
+from .mcs import layer as startvalue_layer
 from .model import Response, Result
+from .pproc import layer as pproc_layer
 
 
 def read_elemnames(finame):
@@ -53,11 +50,11 @@ def optimization_layer(result, iprint=-1):
         Identical to input object.
     """
     x = result._to_statevec()
-    print('Opt> search space dimensions: %i. Running...' % result.ndim)
+    print('Optimization layer: running with %i model parameters...' % result.ndim)
     xopt, fval, optimizer_dict = fmin_l_bfgs_b(
         result._gradient, x, args=(result.input_matrix,), iprint=iprint, maxiter=2e4, factr=100)
-    print('Opt> Finished with %i gradient (L-BFGS) iterations' % optimizer_dict['nit'])
-    print('       chi^2 = %.3e (final)' % fval)
+    print('    ...finished with %i gradient (L-BFGS) iterations.' % optimizer_dict['nit'])
+    print('    chi^2 = %.3e (%s)^2' % (fval, result.unit))
     result._from_statevec(xopt)
     result.additional['Opt'] = optimizer_dict
     return result
@@ -80,18 +77,11 @@ def cobea(response, convergence_info=False):
     result : object
         A :py:class:`cobea.model.Result` object.
     """
-    # for benchmarking purposes, time for core computations is measured:
-    coretime = -time() # start measuring ('tic')
-
     # run the start value layer, return result object:
     result = startvalue_layer(response)
 
     # run the optimization layer, result is modified:
     optimization_layer(result, -1 + 2 * convergence_info)
-
-    coretime += time() # stop measuring ('toc')
-    print('elapsed time (MCS+Opt): %.2f s' % coretime)
-    result.additional['coretime'] = coretime
 
     # run postprocessing layer, result is modified:
     pproc_layer(result, convergence_info)
@@ -100,10 +90,15 @@ def cobea(response, convergence_info=False):
     return result
 
 
-def load_result(savefile):
+def load_result(filename):
     """
     Load (un-pickle) a Result object (or any other object)
     """
-    with open(savefile,'rb') as f:
-        result = load(f)
+    # if npz:
+    #     npd = numpy_load(filename)
+    #     result = Result(Response(npd['input_matrix'], npd['corr_names'], npd['mon_names'], list(npd['line']),
+    #                       'd_jw' in result, assume_sorted=True))
+    # else:
+    with open(filename, 'rb') as f:
+        result = pickle_load(f)
     return result

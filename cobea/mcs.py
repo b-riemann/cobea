@@ -408,7 +408,7 @@ def dispersion_process(Dev, Dev_rc):
     return Dev_res, dsp, b
 
 
-def layer(response, trials = -1):
+def layer(response, trials=-1):
     """
     implementation of the Monitor-Corrector Subspace algorithm
 
@@ -422,21 +422,19 @@ def layer(response, trials = -1):
 
     result = Result(response) # preallocate result (initialized by 'empty')
 
-    # 1) Run MCS through a number (locruns) of monitor subsets and pick the one with the smallest chi^2.
     mon_idx = list( result.topology.line_index(result.topology.mon_names) )
     cor_idx = list( result.topology.line_index(result.topology.corr_names) )
 
     if trials == -1:
         trials = 2 * (result.J - 1)
-    print('MCS> running monitor quadruplet search (%i trials)' % trials)
+    print('MCS layer: running monitor quadruplet search (%i trials)...' % trials)
     split_idx, rmserr = local_optimization(result, mon_idx, cor_idx, trials)
-    print('MCS> monitor quadruplet search finished. Using')
-    for split_line in split_idx:
-        print('       %s -- %s' % tuple([result.topology.line[x] for x in split_line]))
+    mon_strs = ['%s -- %s' % tuple([result.topology.line[x] for x in split_line]) for split_line in split_idx]
+    print('    ...finished. Using %s.' % ' and '.join(mon_strs))
 
-    # 2) (re)Compute the result for the best (smallest chi^2) monitor subset.
+    # (re)compute the result for the best (smallest chi^2) monitor subset.
     ResM, Dev_rc, pcaDevs, Sg = mcs_core(result, mon_idx, cor_idx, split_idx)
-    print('       chi^2: %.3e' % ResM)
+    print('    chi^2 = %.3e (%s)^2' % (ResM, result.unit))
     mcs_dict = {'mon_idx': mon_idx, 'cor_idx': cor_idx, 'split_idx': split_idx,
                 'pca_orbits': pcaDevs, 'pca_singvals': Sg}
     result.additional['MCS'] = mcs_dict

@@ -103,10 +103,11 @@ def random_response_drift(K, J, M=1, include_dispersion=True, relative_noise=0.0
             print('hidden model saved to ' + hidden_filename)
 
     return Response(measured_matrix, topology.corr_names, topology.mon_names,
-                    topology.line, include_dispersion, drift_space=drift, unit='a.u.')
+                    topology.line, include_dispersion, drift_space=drift)
 
 
 if __name__ == '__main__':
+    # reference_dict = {'set1': (30,32,1,0.02)} # (K, J, M, relative_noise)
     from cobea import cobea
     import cobea.plotting as plt
 

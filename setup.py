@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='cobea',
-      version='0.22',
+      version='0.23',
       description='Closed-Orbit Bilinear-Exponential Analysis, an algorithm to be used for studying betatron oscillations in particle accelerators',
       url='http://bitbucket.org/b-riemann/cobea/',
       author='Bernard Riemann',
