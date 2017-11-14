@@ -7,26 +7,31 @@ Note: Does not work well for M=2 from examples/model_generator yet, but does so 
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from pickle import load
-from numpy.testing import assert_array_almost_equal_nulp
+from numpy import any, abs, max
 
 from cobea.model import DriftSpace
 
 
-def compare_attribute(old_result, new_result, attribute, nulp=1):
+def compare_attribute(old_result, new_result, attribute):
     arr = [getattr(result,attribute) for result in (new_result, old_result)]
-    try:
-        assert_array_almost_equal_nulp(arr[0], arr[1], nulp=nulp)
-    except AssertionError:
-        raise AssertionError('%s is different: computation %s vs reference %s' % (attribute, arr[0], arr[1]))
+    arr_error = [getattr(result.error,attribute) for result in (new_result, old_result)]
+    aba = abs(arr[1]-arr[0])
+    print('  max abs %s: %.3e' % (attribute, max(aba)))
+    if any(aba > 0.1*arr_error[1]):
+        raise AssertionError('deviation larger than 0.1*reference error margin')
+    aerr = abs(arr_error[0]/arr_error[1] - 1)
+    print('  max err rel %s: %.3e' % (attribute, max(aerr)))
+    if any(aerr > 0.05):
+        raise AssertionError('error margin deviates more than 5% from reference')
 
 
-def compare_results(new_result, old_result, nulp=1, error_nulp=8):
+def compare_results(new_result, old_result):
     for attribute in ('R_jmw', 'A_km', 'mu_m', 'd_jw', 'b_k'):
         # nulp*spacing(1) ~ 2.22e-16
-        compare_attribute(old_result, new_result, attribute, nulp=nulp)
+        compare_attribute(old_result, new_result, attribute)
         # the deviation for error is higher as its exact values are very sensitive,
         # but a relative error of errors of ~ 1e-8 is still OK.
-        compare_attribute(old_result.error, new_result.error, attribute, nulp=error_nulp)
+        # compare_attribute(old_result.error, new_result.error, attribute, decimal=error_decimal)
 
     print('present result is approx. equivalent to reference.')
 

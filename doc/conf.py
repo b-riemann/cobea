@@ -15,7 +15,7 @@ project = u'COBEA'
 copyright = u'2017, Bernard Riemann'
 author = u'Bernard Riemann'
 
-version = u'0.23'
+version = u'0.24'
 release = version
 
 language = None

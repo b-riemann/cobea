@@ -7,12 +7,12 @@ MCS can be used as start-value layer of COBEA.
 from numpy import arange, angle, reshape, empty, dot, asarray, exp, sign, sqrt, NaN, \
     nanargmin, isnan, mod, nonzero, sum, abs, in1d
 from numpy.linalg import pinv
-from scipy.linalg import lstsq, svd, eig
+from scipy.linalg import lstsq, svd, eig, eigh
 
 from .model import Result
 
 
-### Equations and residuals ###
+# Equations and residuals
 
 def unbrace(complex_matrix):
     w = complex_matrix.shape[1]
@@ -46,7 +46,7 @@ def complexsolv(realvec, mat):
     return sol, res, realvec_rc, s
 
 
-### Corrector-Monitor (CM) mapping ###
+# Corrector-Monitor (CM) mapping
 
 def phasejump_coeffs(bpm_s, corr_s, mus):
     J = len(bpm_s)
@@ -148,50 +148,7 @@ def monitor_systems(Dev, D, all_bpm_s, corr_s, mus, printmsg=True, E=[]):
     return R, rmsResidual, Dev_rc, SV
 
 
-### 'Two-Linac' part of MCS (including PCA) ###
-
-def flatten_Dev(Dev):
-    """
-    Index transform of Deviation matrix (k,j,w)
-    to PCA processing matrix (k,j*w)
-    """
-    pcaproc = empty((Dev.shape[0],
-                     Dev.shape[2] * Dev.shape[1]), dtype=Dev.dtype)
-    pcaproc[:, :Dev.shape[1]] = Dev[:, :, 0]
-    if Dev.shape[2] == 2:
-        pcaproc[:, Dev.shape[1]:] = Dev[:, :, 1]
-    return pcaproc
-
-
-def unflatten_Dev(pcaproc, Devshp):
-    """
-    Index transform of PCA processing matrix (k,j*w)
-    to Deviation matrix (k,j,w)
-    """
-    #nmon = pcaproc.shape[1]/M
-    Dev = empty((pcaproc.shape[0], Devshp[1], Devshp[2]),
-                dtype=pcaproc.dtype)
-    if Devshp[2] == 2:
-        for orb in range(pcaproc.shape[0]):
-            Dev[orb, :, 0] = pcaproc[orb, :Devshp[1]]
-            Dev[orb, :, 1] = pcaproc[orb, Devshp[1]:]
-    else:
-        Dev[:, :, 0] = pcaproc
-    return Dev
-
-
-def pca_core(Dev, principal_orbits=True):
-    """
-    Principal Component Analysis of a Deviation matrix.
-    """
-    # Todo: implement also SVD-cleaned orbits
-    pcaproc = flatten_Dev(Dev)
-    u, s, v = svd(pcaproc)
-    if principal_orbits:
-        pcaDev = unflatten_Dev(v[:4], Dev.shape)
-        pcaCoeff = u[:, :4]
-    return s, pcaDev, pcaCoeff
-
+# 'Two-Linac' part of MCS
 
 def composite_vectors(pcaDev):
     """
@@ -220,17 +177,6 @@ def compvecs_to_sectionmap(ps, pe, order):
     #    coeffs, res, rank, sg = lstsq(multiv_s.T, pe)
     #    return coeffs, idxer, sg
 
-
-def oneturn_eigen(T_zero, T_one):
-    mum, Z = eig(dot(T_one, T_zero))
-    #print('abs eigenvalues: %s' % abs(mum[[0,2]]) )
-
-    if len(mum) == 4:
-        # M=2
-        return angle(mum[[0, 2]]), Z[:, [0, 2]]
-    else:
-        # M=1
-        return [angle(mum[0])], Z[:, 0]
 
 
 def decomposite_eigenvec(Z):
@@ -275,16 +221,47 @@ def part_mons_corrs(mon_idx, cor_idx, split_idx, L):
     return partmons, partcorrs
 
 
+def _flat_dev(Dev, sym_dot):
+    # Index transform of Deviation matrix (k,j,w) to squared PCA processing matrix (k,j*w)
+    pcaproc = empty((Dev.shape[0],
+                     Dev.shape[2] * Dev.shape[1]), dtype=Dev.dtype)
+    pcaproc[:, :Dev.shape[1]] = Dev[:, :, 0]
+    if Dev.shape[2] == 2:
+        pcaproc[:, Dev.shape[1]:] = Dev[:, :, 1]
+    return dot(pcaproc.T, pcaproc) if sym_dot else pcaproc
+
+
+def _unflat_dev(pcaproc, Devshp):
+    # Index transform of PCA processing matrix (k,j*w) to Deviation matrix (k,j,w)
+    #nmon = pcaproc.shape[1]/M
+    Dev = empty((pcaproc.shape[0], Devshp[1], Devshp[2]),
+                dtype=pcaproc.dtype)
+    if Devshp[2] == 2:
+        for orb in range(pcaproc.shape[0]):
+            Dev[orb, :, 0] = pcaproc[orb, :Devshp[1]]
+            Dev[orb, :, 1] = pcaproc[orb, Devshp[1]:]
+    else:
+        Dev[:, :, 0] = pcaproc
+    return Dev
+
+
+def _dev_svd(rkjw_slice):
+    u, s, v = svd(_flat_dev(rkjw_slice, False), full_matrices=False, overwrite_a=True, check_finite=False)
+    return _unflat_dev(v[:4], rkjw_slice.shape)  # s, pcaCoeff = u[:, :4]
+
+
+def _dev_eigh(rkjw_slice):
+    x = _flat_dev(rkjw_slice, True)
+    w, ve = eigh(x, overwrite_a=True, check_finite=False, eigvals=(x.shape[0]-5, x.shape[0]-1))
+    return _unflat_dev(ve[:, -4:].T, rkjw_slice.shape)  # w, ()
+
+
 def pca_tracking(Dev, partmons, partcorrs):
-    pcaDevs = []
-    pcaCoeffs = []
-    Sg = []
-    for part in range(2):
-        x = Dev[partcorrs[part]][:, partmons[part]]
-        s, pcad, pcac = pca_core(x)
-        pcaDevs.append(pcad)
-        pcaCoeffs.append(pcac)
-        Sg.append(s)
+    # pcaDevs = []
+    # for part in range(2):
+    #     pcad = _dev_eigh(Dev[partcorrs[part]][:, partmons[part]])
+    #     pcaDevs.append(pcad)
+    pcaDevs = [_dev_svd(Dev[partcorrs[part]][:, partmons[part]]) for part in range(2)]
 
     Tpart = []
     for part in range(2):
@@ -294,7 +271,19 @@ def pca_tracking(Dev, partmons, partcorrs):
         # use only order=-1 for now (order=1 broken)?
         Tp, psi = compvecs_to_sectionmap(compvecs[0], compvecs[1], order=-1)
         Tpart.append(Tp)
-    return Tpart, pcaDevs, Sg, pcaCoeffs
+    return Tpart, pcaDevs
+
+
+def oneturn_eigen(T_zero, T_one):
+    mum, Z = eig(dot(T_one, T_zero))
+    #print('abs eigenvalues: %s' % abs(mum[[0,2]]) )
+
+    if len(mum) == 4:
+        # M=2
+        return angle(mum[[0, 2]]), Z[:, [0, 2]]
+    else:
+        # M=1
+        return [angle(mum[0])], Z[:, 0]
 
 
 def mcs_core(result, mon_idx, cor_idx, split_idx):
@@ -323,16 +312,16 @@ def mcs_core(result, mon_idx, cor_idx, split_idx):
 
     if any([len(partcorrs[m]) < 2 * result.M for m in range(2)]):
         #print('     not enough correctors. next.')
-        return NaN, 0, 0, 0, 0, 0, 0, 0, 0
+        return NaN, 0, 0, 0, 0, 0, 0, 0
 
-    Tpart, pcaDevs, Sg, pcaCoeffs = pca_tracking(result.input_matrix, partmons, partcorrs)
+    Tpart, pcaDevs = pca_tracking(result.input_matrix, partmons, partcorrs)
 
     result.mu_m[:], Z = oneturn_eigen(Tpart[0], Tpart[1])
 
     monvecs_f = decomposite_eigenvec(Z)
     if monvecs_f.dtype==float:
         #print('     real eigenvectors / defective matrix. next.')
-        return NaN, 0, 0, 0, 0, 0, 0, 0, 0
+        return NaN, 0, 0, 0, 0, 0, 0, 0
 
     result.A_km[:], Res, Dev_fast_rc, SV = corrector_systems(result.input_matrix[:, in1d(mon_idx, split_idx[0]), :],
                                                              monvecs_f, split_idx[0], cor_idx, result.mu_m,
@@ -350,7 +339,7 @@ def mcs_core(result, mon_idx, cor_idx, split_idx):
     #print('       mons: %i+%i, corrs: %i+%i, chi^2 = %.3e' %
     #      (len(partmons[0]), len(partmons[1]),
     #       len(partcorrs[0]), len(partcorrs[1]), rmsResidual))
-    return rmsResidual, Dev_res, pcaDevs, Sg
+    return rmsResidual, Dev_res, pcaDevs
 
 
 def dice_splitpoints(n, mon_idx, split_idx):
@@ -433,9 +422,8 @@ def layer(response, trials=-1):
     print('    ...finished. Using %s.' % ' and '.join(mon_strs))
 
     # (re)compute the result for the best (smallest chi^2) monitor subset.
-    ResM, Dev_rc, pcaDevs, Sg = mcs_core(result, mon_idx, cor_idx, split_idx)
+    ResM, Dev_rc, pcaDevs = mcs_core(result, mon_idx, cor_idx, split_idx)
     print('    chi^2 = %.3e (%s)^2' % (ResM, result.unit))
-    mcs_dict = {'mon_idx': mon_idx, 'cor_idx': cor_idx, 'split_idx': split_idx,
-                'pca_orbits': pcaDevs, 'pca_singvals': Sg}
+    mcs_dict = {'mon_idx': mon_idx, 'cor_idx': cor_idx, 'split_idx': split_idx, 'pca_orbits': pcaDevs}
     result.additional['MCS'] = mcs_dict
     return result

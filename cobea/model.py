@@ -7,11 +7,11 @@ Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 from numpy import abs, angle, argsort, asarray, cumsum, dot, einsum, empty, exp, in1d, real, pi, \
     ravel_multi_index, ones, savez, sqrt, sum, zeros, nonzero, diff, mean
-from scipy.linalg import svd # eigh
+from scipy.linalg import svd, eigh
 from warnings import warn
 from pickle import dump
 
-version = '0.23'
+version = '0.24'
 
 
 class BasicModel():
@@ -140,26 +140,24 @@ class ErrorModel(BasicModel):
         self.chi_squared = chi_squared
         self.variance = chi_squared / denominator
 
-    def parse_jacobian(self, jacobian_matrix):
+    def parse_jacobian(self, jacobian_matrix, svd_mode=False):
         sqv = sqrt(self.variance)
         self.ri2v = self.input_rms / sqv
         # preparations for Hessian error estimation (H approx J J.T)
-        u, s, vh = svd( jacobian_matrix, full_matrices=False, overwrite_a=True, check_finite=False)
-        # w, v = eigh(dot(jacomat,jacomat.T),overwrite_a=True)  # encapsulate jacomat for this as it is large
-
-        # cut off the smallest values according to the remaining number of scaling invariants.
-        # s = sigma * S_inv
-        s[:-self.n_invariants] = sqv / s[:-self.n_invariants]
-        s[-self.n_invariants:] = 0
-        # w[:n_invariants] = 0
-        # w[n_invariants:] = sqrt(self.error.variance / w[n_invariants:])
-        self.additional['eigvals'] = s
+        if svd_mode:
+            u, s, vh = svd( jacobian_matrix, full_matrices=False, overwrite_a=True, check_finite=False)
+            # cut off the smallest values according to the remaining number of scaling invariants.
+            # s = sigma * S_inv
+            s[:-self.n_invariants] = sqv / s[:-self.n_invariants]
+            s[-self.n_invariants:] = 0
+        else:
+            s, u = eigh(dot(jacobian_matrix, jacobian_matrix.T), overwrite_a=True, check_finite=False)
+            s[self.n_invariants:] = sqv / sqrt(s[self.n_invariants:])
+            s[:self.n_invariants] = 0
 
         u = einsum('ab,b->ab', u, s)  # = U sigma * S_inv
-        # v = dot(v,diag(w))
-        # print dot(u,u.T) / dot(v,v.T)
-        # we now have sigma_rho^2 = A.T v v.T A = A.T u u.T A
-        self._from_statevec( sqrt(einsum('pq,pq->p', u, u)) )  # errors of state vector variables
+        # we now have sigma_rho^2 = A.T u u.T A
+        self._from_statevec(sqrt(einsum('pq,pq->p', u, u)))  # errors of state vector variables
         return u
 
     def tune(self, m):

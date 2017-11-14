@@ -4,7 +4,7 @@ Small postprocessing and helper functions for COBEA results.
 Bernard Riemann (bernard.riemann@tu-dortmund.de)
 """
 
-from numpy import asarray, conj, dot, empty, eye, sign, sum, zeros
+from numpy import asarray, conj, dot, empty, eye, sign, sum, zeros, sqrt, mean
 
 
 def symplectic_form(D=2):
@@ -126,6 +126,12 @@ def guess_mu_sign(rslt):
             rslt.flip_mu(m)
 
 
+def normalize_dispersion(result):
+    skal = sqrt(mean(result.d_jw**2))
+    result.d_jw /= skal
+    result.b_k *= skal
+
+
 def l_bfgs_iterate(alloc_items=10000):
     """
     convert the iterate.dat file produced by L-BFGS-B
@@ -219,6 +225,8 @@ def layer(result, convergence_info=False):
     except AttributeError:
         print('Postprocessing: no known element given,\n    guessing tune quadrant by phase advance')
         guess_mu_sign(result)
+
+    normalize_dispersion(result)
 
     print('Postprocessing: computing errors...')
     result.update_errors()

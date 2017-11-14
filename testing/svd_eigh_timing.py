@@ -1,11 +1,11 @@
 from scipy.linalg import svd, eigh
-from numpy import abs, dot, sum, empty
+from numpy import abs, dot, sum, empty, min
 from numpy.random import randn
 import matplotlib.pyplot as plt
 from timeit import default_timer as timer
 
-J = randn(768, 4096)
-trials = 5  # 30
+J = randn(64, 32) #(768, 4096)
+trials = 128  # 5  # 30
 
 start = timer()
 for n in range(trials):
@@ -22,7 +22,7 @@ eigh_time = end - start
 print('EIGH elapsed time: %.2f s' % eigh_time)
 
 resid = empty(J.shape[0], dtype=float)
-for n in range(J.shape[0]):
+for n in range(min(J.shape)):
     resid[n] = abs(sum(v[:,-1-n]*u[:,n]))-1
 
 print('SVD/EIGH: %.2f' % (svd_time/eigh_time))

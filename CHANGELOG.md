@@ -1,3 +1,8 @@
+## Version 0.24 ##
+
+* postprocessing is now ~4x faster for typical problem sizes (using EIGH instead of SVD in error computation)
+* clean-up in [MCS](cobea/mcs.py), now also uses EIGH.
+
 ## Version 0.23 ##
 
 * new testing folder (moved [reference_tool](testing/reference_tool.py) there)

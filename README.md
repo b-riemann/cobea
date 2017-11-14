@@ -1,6 +1,6 @@
 The _cobea_ module [1] is a Python implementation of **C**losed-**O**rbit **B**ilinear-**E**xponential **A**nalysis [2], an algorithm for studying closed-orbit response matrices of storage rings (particle accelerators).
 
-current version: **0.23** (see [CHANGELOG.md](CHANGELOG.md) for version history)
+current version: **0.24** (see [CHANGELOG.md](CHANGELOG.md) for version history)
 
 ### Usage ###
 

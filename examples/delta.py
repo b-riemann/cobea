@@ -100,7 +100,7 @@ def import_response(filename, normalized=True, remove_monitors=('BPM12',),
     orb = _reorder(orb_one, orb_two, corr_names)
     r_kjw = nanmean(orb, axis=0)
     response = Response(r_kjw, corr_names, ['BPM%02i' % j for j in bpms],
-                        read_elemnames(line_file), unit='(m/rad)',
+                        read_elemnames(line_file), unit='m/rad',
                         corr_filters=('HK*', 'VK*'), drift_space=drift_info(drift),
                         include_dispersion=True, name=filename.split('/')[-1])
     for monitor in remove_monitors:
