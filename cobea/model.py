@@ -11,7 +11,7 @@ from scipy.linalg import svd, eigh
 from warnings import warn
 from pickle import dump
 
-version = '0.24'
+version = '0.25'
 
 
 class BasicModel():

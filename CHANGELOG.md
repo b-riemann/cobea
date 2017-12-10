@@ -1,3 +1,8 @@
+## Version 0.25 ##
+
+* small changes in helper functions and setup script.
+* in examples: internal creation of corrector list for [delta_fofb](examples/delta_fofb.py) has changed.
+
 ## Version 0.24 ##
 
 * postprocessing is now ~4x faster for typical problem sizes (using EIGH instead of SVD in error computation)
@@ -7,14 +12,14 @@
 
 * new testing folder (moved [reference_tool](testing/reference_tool.py) there)
 * internal timing in [cobea](cobea/__init__.py) function has been removed, use [cobea_timing](testing/cobea_timing.py)
-  for this in the future.
+  for this purpose in the future.
 * internals of error computation changed (moving to ErrorModel object)
 
 ## Version 0.22 ##
 
 * Error margins for all quantities could be significantly reduced due to an error found
   in computing the variance expectation value.
-* paper format in plot_results changed to DIN.
+* paper format in [plot_result](cobea/plotting.py) changed to DIN.
 * errors are plotted as boxes, plots are using standard matplotlib colors.
 * Response and Result now have a name attribute (shown when printing results).
 
