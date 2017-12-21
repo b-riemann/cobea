@@ -30,7 +30,7 @@ For details, please view the (incomplete) [manual](doc/manual.pdf), which was la
 
 # Contact
 
-If you have questions or need help for applying the code to your accelerator, feel free to contact me. I try to answer as soon as possible.
+If you have questions or need help for applying the code to your accelerator, feel free to contact me (see [setup.py](setup.py) for email address) - I will answer as soon as possible.
 
 # References
 
