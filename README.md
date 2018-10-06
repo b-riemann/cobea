@@ -1,16 +1,16 @@
 # About
 
-The _cobea_ module [1] is a Python implementation of **C**losed-**O**rbit **B**ilinear-**E**xponential **A**nalysis [2], an algorithm for studying closed-orbit response matrices of storage rings (particle accelerators).
+The _cobea_ module [1,2] is a Python implementation of **C**losed-**O**rbit **B**ilinear-**E**xponential **A**nalysis [3], an algorithm for studying closed-orbit response matrices of storage rings (particle accelerators).
 
 (see [CHANGELOG.md](CHANGELOG.md) for version history)
 
 # Usage
 
-_cobea_ is distributed under the [Simplified BSD License](LICENSE). If you publish material using this software, please cite one or more of the references [1-2].
+_cobea_ is distributed under the [Simplified BSD License](LICENSE). If you publish material using this software, please cite one or more of the references [1-3].
 
 ## Installation and Dependencies
 
-The _cobea_ module is implemented both for Python 2 (>=2.7) and 3 (>= 3.6), using the [SciPy ecosystem](https://www.scipy.org).
+The _cobea_ module is implemented both for Python 3 (>= 3.6) and 2 (>=2.7), using the [SciPy ecosystem](https://www.scipy.org).
 
 The module is installed using the standard _setuptools_ process. After cloning the repository to your system, just run
 
@@ -34,6 +34,8 @@ If you have questions or need help for applying the code to your accelerator, fe
 
 # References
 
-[1] B. Riemann _et al._: ''COBEA - Optical Parameters From Response Matrices Without Knowledge of Magnet Strengths'', in [Proc. IPAC 17, MOPIK066](http://accelconf.web.cern.ch/AccelConf/ipac2017/papers/mopik066.pdf) (2017).
+[1] B. Riemann _et al._: ''Validating the COBEA Algorithm at the DELTA Storage Ring'', in Proc. IPAC18, THPML084 (2018). [doi:10.18429/JACoW-IPAC2018-THPML084](https://doi.org/10.18429/JACoW-IPAC2018-THPML084)
 
-[2] B. Riemann: ''The Bilinear-Exponential Closed-Orbit Model and its Application to Storage Ring Beam Diagnostics'', Ph.D. Dissertation (TU Dortmund University, 2016). [doi:10.17877/DE290R-17221](https://doi.org/10.17877/DE290R-17221)
+[2] B. Riemann _et al._: ''COBEA - Optical Parameters From Response Matrices Without Knowledge of Magnet Strengths'', in Proc. IPAC 17, MOPIK066 (2017). [doi:10.18429/JACoW-IPAC2017-MOPIK066](https://doi.org/10.18429/JACoW-IPAC2017-MOPIK066)
+
+[3] B. Riemann: ''The Bilinear-Exponential Closed-Orbit Model and its Application to Storage Ring Beam Diagnostics'', Ph.D. Dissertation (TU Dortmund University, 2016). [doi:10.17877/DE290R-17221](https://doi.org/10.17877/DE290R-17221)
